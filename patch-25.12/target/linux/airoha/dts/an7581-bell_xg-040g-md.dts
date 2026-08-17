@@ -18,12 +18,13 @@
 	chosen {
 		bootargs = "ubi.mtd=ubi root=ubi0:rootfs rootfstype=squashfs ro rootwait console=ttyS0,115200 earlycon";
 		stdout-path = "serial0:115200n8";
-		linux,usable-memory-range = <0x0 0x80200000 0x0 0x1fe00000>;
+		/* 1GB DRAM: 0x80200000 ~ 0xc0000000 (跳过 0x80000000 起 2MB 的 ATF 区) */
+		linux,usable-memory-range = <0x0 0x80200000 0x0 0x3fe00000>;
 	};
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x0 0x80000000 0x0 0x80000000>;
+		reg = <0x0 0x80000000 0x0 0x40000000>;
 	};
 
 	efuse-banks {

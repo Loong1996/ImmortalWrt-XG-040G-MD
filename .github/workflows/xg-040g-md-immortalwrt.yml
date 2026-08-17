@@ -11,8 +11,18 @@ on:
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
+      dram_size:
+        description: '板上内存颗粒容量（换过颗粒才需要改）'
+        required: true
+        default: '1G'
+        type: choice
+        options:
+          - 512M
+          - 1G
+          - 2G
 
 env:
+  DRAM_SIZE: ${{ github.event.inputs.dram_size }}
   REPO_URL: https://github.com/fzs209/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
@@ -82,6 +92,31 @@ jobs:
         VERSION_INFO=$(git show -s --date=short --format="作者: %an<br/>时间: %cd<br/>内容: %s<br/>hash: %H")
         echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
         echo "REPO_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
+
+    - name: Patch DRAM Size(修改内存容量)
+      if: env.DRAM_SIZE != ''
+      run: |
+        cd $OPENWRT_PATH
+        DTS=$(ls target/linux/airoha/dts/*xg-040g-md*.dts 2>/dev/null | head -n1)
+        [ -n "$DTS" ] || { echo "::error::未找到 XG-040G-MD 的 dts"; exit 1; }
+        echo "目标 dts: $DTS"
+
+        case "$DRAM_SIZE" in
+          512M) MEM_SIZE=0x20000000; USABLE_SIZE=0x1fe00000 ;;
+          1G)   MEM_SIZE=0x40000000; USABLE_SIZE=0x3fe00000 ;;
+          2G)   MEM_SIZE=0x80000000; USABLE_SIZE=0x7fe00000 ;;
+          *)    echo "::error::不支持的 DRAM_SIZE=$DRAM_SIZE"; exit 1 ;;
+        esac
+
+        # memory 节点：DRAM 基址 0x80000000，大小改为实际颗粒容量
+        sed -i -E "s/(reg = <0x0 0x80000000 0x0 )0x[0-9a-fA-F]+(>;)/\1${MEM_SIZE}\2/" "$DTS"
+        # chosen/linux,usable-memory-range：跳过 0x80000000 起 2MB 的 ATF 保留区
+        sed -i -E "s/(linux,usable-memory-range = <0x0 0x80200000 0x0 )0x[0-9a-fA-F]+(>;)/\1${USABLE_SIZE}\2/" "$DTS"
+
+        echo "--- 修改后 ---"
+        grep -nE "usable-memory-range|reg = <0x0 0x80000000" "$DTS"
+        grep -q "0x0 0x80000000 0x0 ${MEM_SIZE}>" "$DTS" || { echo "::error::memory 节点未生效"; exit 1; }
+        grep -q "0x0 0x80200000 0x0 ${USABLE_SIZE}>" "$DTS" || { echo "::error::usable-memory-range 未生效"; exit 1; }
 
     - name: Generate Variables(生成变量)
       run: |
