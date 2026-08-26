@@ -11,6 +11,9 @@ on:
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
+          # 临时验证分支：补了上游 25.12 缺失的 phylink 多 PCS 补丁（770-01..07），
+          # 用于确认 airoha 能否编过。验证通过后合回 openwrt-25.12-XG-040G-MD 并删除本项
+          - openwrt-25.12-XG-040G-MD-pcsfix
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
         required: true
@@ -497,6 +500,11 @@ jobs:
           echo "::warning::未找到 $PI，跳过选包页更新"
           exit 0
         fi
+        # 临时验证分支不进选包页，免得在 gh-pages 上留下没人引用的索引文件
+        case "$REPO_BRANCH" in
+          master-XG-040G-MD|openwrt-25.12-XG-040G-MD) ;;
+          *) echo "::notice::$REPO_BRANCH 为临时分支，跳过选包页更新"; exit 0 ;;
+        esac
         PAGES="$RUNNER_TEMP/pages"
         mkdir -p "$PAGES"
         python3 "$GITHUB_WORKSPACE/selector/build-index.py" \
