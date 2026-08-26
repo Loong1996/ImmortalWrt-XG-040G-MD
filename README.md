@@ -6,7 +6,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ### 项目说明
 
-* 固件源码使用 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt)。
+* 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)，设备支持压缩为单个提交叠在上游之上，便于持续跟进。设备补丁最初来自 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt)。
 * 基于 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt) 仓库的补丁适配 SkyHigh S35ML02G300 和 Fudan Micro FM25G02B 闪存。
 * 基于 [XG-040G-MD (AN7581) NPU 固件加载报错分析与修复记录](https://github.com/xiangtailiang/OpenWrt-for-XG-040G-MD/blob/main/docs/npu-firmware-load.md) 修复内核日志报错：
     ```text
@@ -19,23 +19,35 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ### 编译
 
-本仓库只包含编译配置、补丁与 CI 流程，固件源码在 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。
+本仓库只包含编译配置、补丁与 CI 流程，固件源码在 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。
 
 1. Fork 本仓库，在 Actions 页面启用 workflow
-2. （可选）在 `Settings → Secrets and variables → Actions` 添加 `REPO_TOKEN`，值为任意具有 `public_repo` 权限的 PAT
-3. `Actions → XG-040G-MD → Run workflow`，选择编译分支
-4. 约 1~2 小时后，固件发布在本仓库的 Releases 中
+2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与内存颗粒容量
+3. 约 1~2 小时后，固件发布在本仓库的 Releases 中
 
-**分支选择建议：`openwrt-25.12-XG-040G-MD`**
+**分支选择建议：`openwrt-25.12-XG-040G-MD`（默认）**
 
-两个分支对 XG-040G-MD 的补丁完全一致——设备 DTS、镜像定义（分区/`IMAGE_SIZE`/`DEVICE_PACKAGES`）、`target.mk` 及五个闪存补丁均相同，内核同为 6.12。差别只在 feeds：
+| 分支 | 源码基线 | feeds | 状态 |
+| --- | --- | --- | --- |
+| `openwrt-25.12-XG-040G-MD` | 与 immortalwrt `openwrt-25.12` 同步，落后 0 | 五个 feed 全部锁定 `;openwrt-25.12` | 维护中 |
+| `master-XG-040G-MD` | 停在 2026-05-11，落后 immortalwrt `master` 1611 个提交 | 未锁定，拉取 packages/luci 最新提交 | 仅保留，未跟进上游 |
 
-| 分支 | feeds | 说明 |
-| --- | --- | --- |
-| `openwrt-25.12-XG-040G-MD` | 锁定 `;openwrt-25.12` | feeds 与源码同处稳定分支线，仅收 bugfix |
-| `master-XG-040G-MD` | 未锁定分支 | 源码停在 2026-05-11，但会拉取 packages/luci 的最新提交，存在版本错配风险 |
+两个分支内核同为 6.12。25.12 分支已 rebase 到上游最新，若干原本自带的闪存补丁改由上游的 mainline 回合提供（`backport-6.12/436`、`437` 提供 FM25G01B/FM25G02B，`429-01/02/03` 提供 regular 模式重读）；SkyHigh S35ML 支持（`430`、`431`）上游至今没有，仍由本项目自带。master 分支保持 2026-05-11 的原始状态，未做同步。
 
 此外 25.12 分支的内核配置已启用完整 IPsec/XFRM 支持。
+
+跟进上游（25.12 线）：
+
+```bash
+git clone https://github.com/Loong1996/immortalwrt.git -b openwrt-25.12-XG-040G-MD
+cd immortalwrt
+git remote add upstream https://github.com/immortalwrt/immortalwrt.git
+git fetch upstream openwrt-25.12
+git rebase upstream/openwrt-25.12    # 只有 1 个设备提交要 rebase
+git push --force-with-lease
+```
+
+补丁目录 `patch-25.12/`、`patch-master/` 保留作对照参考，实际编译不使用。
 
 > 注意：上游 `immortalwrt/immortalwrt` 的 master 已升级至内核 6.18 并移除了 `target/linux/airoha/patches-6.12/`。若尝试将 `master-XG-040G-MD` rebase 到上游最新，本项目的 airoha 补丁会被放入构建系统不再读取的目录，**不报错但设备支持会静默失效**。如需跟进上游，请使用 25.12 分支并以 merge 方式同步。
 

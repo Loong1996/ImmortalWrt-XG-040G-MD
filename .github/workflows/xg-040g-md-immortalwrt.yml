@@ -6,7 +6,7 @@ on:
       repo_branch:
         description: '选择编译分支'
         required: true
-        default: 'master-XG-040G-MD'
+        default: 'openwrt-25.12-XG-040G-MD'
         type: choice
         options:
           - master-XG-040G-MD
@@ -23,7 +23,7 @@ on:
 
 env:
   DRAM_SIZE: ${{ github.event.inputs.dram_size }}
-  REPO_URL: https://github.com/fzs209/immortalwrt.git
+  REPO_URL: https://github.com/Loong1996/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
   DEVICE_SUBTARGET: an7581
@@ -85,8 +85,7 @@ jobs:
         REPO_BRANCH: ${{ github.event.inputs.repo_branch }}
       run: |
         df -hT $GITHUB_WORKSPACE
-        AUTH_REPO_URL=$(echo "$REPO_URL" | sed "s|://|://x-access-token:${{ secrets.REPO_TOKEN }}@|")
-        git clone "$AUTH_REPO_URL" -b "$REPO_BRANCH" openwrt
+        git clone "$REPO_URL" -b "$REPO_BRANCH" openwrt
         cd openwrt
         echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
         VERSION_INFO=$(git show -s --date=short --format="作者: %an<br/>时间: %cd<br/>内容: %s<br/>hash: %H")
