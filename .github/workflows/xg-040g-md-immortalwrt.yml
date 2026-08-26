@@ -29,10 +29,16 @@ on:
           - 512M
           - 1G
           - 2G
+      extra_packages:
+        description: '附加软件包（空格分隔；包名前加 - 表示移除。可用选包页生成）'
+        required: false
+        default: ''
+        type: string
 
 env:
   DRAM_SIZE: ${{ github.event.inputs.dram_size }}
   DEVICE_VARIANT: ${{ github.event.inputs.device_variant }}
+  EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
@@ -237,11 +243,86 @@ jobs:
         sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
         grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
           || { echo "::error::设备符号写入失败: $DEVICE_SYMBOL"; exit 1; }
+        # 附加软件包：由选包页生成、经 workflow_dispatch 输入的一串包名
+        #   pkg  → 编入固件      -pkg → 从基础配置中剔除
+        # 这里只改写 .config，依赖交给随后的 defconfig 补全，是否真生效在下一步核对
+        python3 - <<'PY'
+        import os, re, sys
+        raw = os.environ.get("EXTRA_PACKAGES") or ""
+        add, rm, bad = [], [], []
+        for t in re.split(r"[\s,]+", raw.strip()):
+            if not t:
+                continue
+            neg = t.startswith("-")
+            n = t[1:] if neg else t
+            if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$", n):
+                bad.append(t)
+            elif neg:
+                rm.append(n)
+            else:
+                add.append(n)
+        if bad:
+            print("::error::非法软件包名: %s" % " ".join(bad))
+            sys.exit(1)
+        # 先把该符号已有的行全部删掉（=y / =m / is not set），再按意图追加，
+        # 免得同一个包在配置里留下两条互相矛盾的记录
+        targets = set(add) | set(rm)
+        kept = []
+        for ln in open(".config", encoding="utf-8").read().splitlines():
+            m = re.match(r"^(?:# )?CONFIG_PACKAGE_(\S+?)(?:=[ymn]| is not set)\s*(?:#.*)?$", ln)
+            if m and m.group(1) in targets:
+                continue
+            kept.append(ln)
+        kept += ["CONFIG_PACKAGE_%s=y" % n for n in add]
+        kept += ["# CONFIG_PACKAGE_%s is not set" % n for n in rm]
+        open(".config", "w", encoding="utf-8").write("\n".join(kept) + "\n")
+        # 同一步内 GITHUB_ENV 还没生效，另写一份 sh 供本步 source
+        with open(os.environ["RUNNER_TEMP"] + "/extra.sh", "w", encoding="utf-8") as f:
+            f.write('export EXTRA_ADD="%s"\n' % " ".join(add))
+            f.write('export EXTRA_RM="%s"\n' % " ".join(rm))
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+            f.write("EXTRA_ADD=%s\n" % " ".join(add))
+            f.write("EXTRA_RM=%s\n" % " ".join(rm))
+        print("附加软件包 追加: %s" % (" ".join(add) or "(无)"))
+        print("附加软件包 移除: %s" % (" ".join(rm) or "(无)"))
+        PY
+        . "$RUNNER_TEMP/extra.sh"
         make defconfig
         grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
           || { echo "::error::defconfig 后设备符号丢失，$DEVICE_SYMBOL 在该源码分支中可能不存在"; exit 1; }
         echo "已选定设备: $DEVICE_SYMBOL"
         grep "CONFIG_PACKAGE_luci-app-airoha-npu" .config || echo "WARNING: option missing!"
+        # 核对附加软件包是否真进了配置。包名拼错、或该分支根本没这个包时，
+        # make defconfig 会静默丢掉对应行；不核对就得等一两小时编完才发现漏装
+        python3 - <<'PY'
+        import os, re, sys
+        cfg = open(".config", encoding="utf-8").read()
+        def state(n):
+            for v in ("y", "m"):
+                if re.search(r"^CONFIG_PACKAGE_%s=%s$" % (re.escape(n), v), cfg, re.M):
+                    return v
+            if re.search(r"^# CONFIG_PACKAGE_%s is not set$" % re.escape(n), cfg, re.M):
+                return "n"
+            return "?"
+        fail = [n for n in os.environ.get("EXTRA_ADD", "").split()
+                if state(n) not in ("y", "m")]
+        for n in os.environ.get("EXTRA_RM", "").split():
+            if state(n) in ("y", "m"):
+                print("::warning::%s 被其它已选软件包依赖，无法移除，仍会编入固件" % n)
+        if fail:
+            print("::error::以下附加软件包未能加入配置，请核对包名是否属于本分支：")
+            for n in fail:
+                print("::error::  %s" % n)
+            sys.exit(1)
+        PY
+        # 供 Release 正文引用；没有输入时也要有一行占位，否则正文里会留个空条目
+        {
+          echo 'EXTRA_NOTE<<EXTRANOTEEOF'
+          if [ -n "$EXTRA_ADD" ]; then echo "- 追加：\`$EXTRA_ADD\`"; fi
+          if [ -n "$EXTRA_RM" ]; then echo "- 移除：\`$EXTRA_RM\`"; fi
+          if [ -z "$EXTRA_ADD$EXTRA_RM" ]; then echo "- 本次未指定附加软件包"; fi
+          echo EXTRANOTEEOF
+        } >> $GITHUB_ENV
 
     - name: Download DL Package(下载DL软件包)
       run: |
@@ -343,6 +424,13 @@ jobs:
               else printf "%s\n", name
             }
           ' "$SRC"
+          if [ -n "$EXTRA_ADD$EXTRA_RM" ]; then
+            echo
+            echo "【本次构建的附加软件包】"
+            echo "（由 workflow 的 extra_packages 输入指定，不在 $CONFIG_FILE 中）"
+            for p in $EXTRA_ADD; do echo "  + $p"; done
+            for p in $EXTRA_RM;  do echo "  - $p  已从基础配置中剔除"; done
+          fi
           echo
           echo "使用注意"
           echo "--------"
@@ -392,3 +480,75 @@ jobs:
           ### 📦 内置软件包
           - 本次编译的自定义软件包清单见下方附件 `custom-packages.txt`
           - 固件实际安装的完整包列表见附件中的 `*.manifest`，完整内核配置见 `build.config`
+          ### 🧩 附加软件包
+          ${{ env.EXTRA_NOTE }}
+          - 想加装别的软件包：在[选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/)勾选后复制包名串，粘进本 workflow 的 `extra_packages` 输入重新编译
+
+    - name: Publish Package Selector(发布选包页)
+      if: steps.compile.outputs.status == 'success'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        # 索引取自本次编译用的源码树：只有它能反映这条分支实际编得出哪些包，
+        # 自建的 luci-app-airoha-npu 之类官方 apk 索引里是没有的。
+        # tmp/.packageinfo 由 make defconfig 生成，编译结束后依然在。
+        PI="$OPENWRT_PATH/tmp/.packageinfo"
+        if [ ! -s "$PI" ]; then
+          echo "::warning::未找到 $PI，跳过选包页更新"
+          exit 0
+        fi
+        PAGES="$RUNNER_TEMP/pages"
+        mkdir -p "$PAGES"
+        python3 "$GITHUB_WORKSPACE/selector/build-index.py" \
+          "$PI" \
+          "$OPENWRT_PATH/.config" \
+          "$GITHUB_WORKSPACE/$CONFIG_FILE" \
+          "$REPO_BRANCH" "$RELEASE_TAG" \
+          "$PAGES/packages-$REPO_BRANCH.json"
+
+        # gh-pages 是只放选包页的孤儿分支，首次运行时现建。
+        # 每条编译线各自更新自己那份 json，互不覆盖。
+        GH="$RUNNER_TEMP/gh"
+        REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+        if git clone --depth 1 --branch gh-pages "$REMOTE" "$GH"; then
+          echo "已有 gh-pages 分支"
+        else
+          echo "gh-pages 不存在，新建"
+          git init -b gh-pages "$GH"
+          git -C "$GH" remote add origin "$REMOTE"
+        fi
+        cd "$GH"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # 只覆盖本次产出的文件，另一条编译线的索引原样留着
+        stage() {
+          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/index.html"
+          cp "$PAGES"/*.json "$GH/"
+          touch "$GH/.nojekyll"
+          git add -A
+        }
+
+        # 两条线同时构建时后推的那个会被拒。浅克隆上 rebase 不可靠，
+        # 改为丢掉本地提交、取回最新的 gh-pages，再把本次文件重新叠上去。
+        for try in 1 2 3; do
+          stage
+          if git diff --cached --quiet; then
+            echo "选包页无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "选包页：更新 $REPO_BRANCH 索引（$RELEASE_TAG）"
+          if git push origin gh-pages; then
+            break
+          fi
+          if [ "$try" = 3 ]; then
+            echo "::error::推送 gh-pages 连续三次失败"
+            exit 1
+          fi
+          echo "推送被拒，多半是并发构建先提交了，取最新重来"
+          git fetch --depth 1 origin gh-pages
+          git reset --hard FETCH_HEAD
+        done
+        OWNER=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f1 | tr 'A-Z' 'a-z')
+        NAME=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)
+        echo "选包页已更新：https://$OWNER.github.io/$NAME/"

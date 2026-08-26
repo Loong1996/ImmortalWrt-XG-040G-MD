@@ -22,7 +22,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 本仓库只包含编译配置、补丁与 CI 流程，固件源码在 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。
 
 1. Fork 本仓库，在 Actions 页面启用 workflow
-2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与内存颗粒容量
+2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与内存颗粒容量（想额外加装软件包，见下方[选包页](#临时加装软件包选包页)）
 3. 约 1~2 小时后，固件发布在本仓库的 Releases 中
 
 **分支选择建议：`openwrt-25.12-XG-040G-MD`（默认）**
@@ -143,6 +143,25 @@ git push --force-with-lease
 * **系统**：Argon 主题、attendedsysupgrade、apk 包管理界面、USB 存储与 extroot、中文语言包
 
 每个 Release 都会附带一份 `custom-packages.txt`，列出该次编译实际勾选的自定义软件包（按配置文件分组，带注释）；固件实际安装的完整包列表见同一 Release 中的 `*.manifest`。
+
+#### 临时加装软件包（选包页）
+
+不想动配置文件、只是这次编译想多带几个包时，用选包页：
+
+**<https://loong1996.github.io/ImmortalWrt-XG-040G-MD/>**
+
+页面上的可选清单由每次成功编译自动导出（取自源码树的 `tmp/.packageinfo`），所以**只列出该分支真正编得出来的包**，自建的 `luci-app-airoha-npu` 也在里面。勾选后底部会生成一串包名，粘进 `Run workflow` 的 **附加软件包** 那一栏：
+
+```
+luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
+```
+
+* 包名前加 `-` 表示从基础配置里移除
+* 包名拼错、或该分支根本没这个包时，workflow 会在 `Load Custom Configuration` 步骤直接报错退出，不会让你等一两个小时编完才发现漏装
+* 被其它已选软件包硬依赖的包移除不掉，这种情况只给 warning，固件里仍然会有
+* 只影响本次编译；想长期带上，还是改上面那两份 `.config`
+
+选包页托管在本仓库的 `gh-pages` 分支，由构建流程自动更新（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）；页面与索引生成脚本在 [`selector/`](selector/)。两条编译线各有一份索引，页面左上角可切换。
 
 使用注意：
 

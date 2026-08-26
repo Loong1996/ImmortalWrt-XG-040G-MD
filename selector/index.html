@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>XG-040G-MD 选包</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#fff; --fg:#1b1f24; --dim:#656d76; --line:#d8dee4;
+  --accent:#0969da; --add:#1a7f37; --del:#cf222e; --chip:#eef1f4;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0d1117; --panel:#161b22; --fg:#e6edf3; --dim:#8d96a0; --line:#30363d;
+    --accent:#4493f8; --add:#3fb950; --del:#f85149; --chip:#21262d;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+.wrap{max-width:1000px;margin:0 auto;padding:16px 16px 200px}
+h1{font-size:20px;margin:8px 0 4px}
+.sub{color:var(--dim);margin:0 0 16px}
+.sub a{color:var(--accent)}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+select,input[type=search],button{
+  font:inherit;color:var(--fg);background:var(--panel);
+  border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+input[type=search]{flex:1;min-width:220px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.meta{color:var(--dim);font-size:13px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.grp{border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.grp>summary{padding:8px 12px;cursor:pointer;font-weight:600;list-style:none;display:flex;gap:8px}
+.grp>summary::-webkit-details-marker{display:none}
+.grp>summary::before{content:"\25B8";color:var(--dim);width:1em}
+.grp[open]>summary::before{content:"\25BE"}
+.grp>summary .n{color:var(--dim);font-weight:400}
+.sub2{padding:6px 12px 2px 28px;color:var(--dim);font-size:12px}
+.row{display:flex;gap:8px;align-items:baseline;padding:3px 12px 3px 28px}
+.row:hover{background:var(--chip)}
+.row label{display:flex;gap:8px;align-items:baseline;cursor:pointer;flex:1;min-width:0}
+.row .name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
+.row .t{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+.badge{font-size:11px;padding:0 6px;border-radius:10px;background:var(--chip);color:var(--dim);white-space:nowrap}
+.empty{padding:24px 12px;text-align:center;color:var(--dim)}
+.out{position:fixed;left:0;right:0;bottom:0;background:var(--panel);
+  border-top:1px solid var(--line);padding:10px 16px}
+.out .inner{max-width:1000px;margin:0 auto;display:flex;gap:8px;align-items:flex-start}
+textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
+  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
+.tally{margin:0 0 6px;font-size:13px}
+.tally .a{color:var(--add)} .tally .d{color:var(--del)}
+.err{color:var(--del)}
+@media (max-width:640px){ .out .inner{flex-direction:column;align-items:stretch} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>XG-040G-MD 选包</h1>
+  <p class="sub">勾选想要的软件包，把底部生成的字符串粘进
+    <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/actions" target="_blank" rel="noopener">Actions</a>
+    里 <code>附加软件包</code> 那一栏，再跑一次构建即可。</p>
+
+  <div class="bar">
+    <select id="branch"></select>
+    <input type="search" id="q" placeholder="搜索包名或描述，至少 2 个字符">
+    <button id="only">仅看改动</button>
+    <button id="reset">清空改动</button>
+  </div>
+  <p class="meta" id="status">加载中…</p>
+
+  <div class="panel" id="list"></div>
+</div>
+
+<div class="out">
+  <div class="inner">
+    <div style="flex:1;min-width:0">
+      <p class="tally" id="tally">未做任何改动</p>
+      <textarea id="outbox" readonly placeholder="勾选后这里会生成包名串"></textarea>
+    </div>
+    <button class="primary" id="copy">复制</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+// 两条编译线各一份索引，文件名与 workflow 的 repo_branch 选项一一对应。
+// 某条线还没跑过构建时 JSON 不存在，要给出人话提示而不是白屏。
+var BRANCHES = ["openwrt-25.12-XG-040G-MD", "master-XG-040G-MD"];
+var MAX_FLAT = 400;   // 搜索结果一次最多渲染多少条，防止上千 DOM 拖垮手机
+
+var pkgs = [], byName = {}, changes = {}, branch = BRANCHES[0], onlyChanged = false;
+
+function $(id) { return document.getElementById(id); }
+
+function store(key, val) {
+  try {
+    if (val === undefined) return localStorage.getItem(key);
+    localStorage.setItem(key, val);
+  } catch (e) { /* 隐私模式或站点数据被禁用，忽略 */ }
+  return null;
+}
+
+function loadChanges() {
+  changes = {};
+  try {
+    var raw = store("chg:" + branch);
+    if (raw) changes = JSON.parse(raw) || {};
+  } catch (e) { changes = {}; }
+}
+
+function saveChanges() { store("chg:" + branch, JSON.stringify(changes)); }
+
+// 复选框状态 = 基础配置里有没有，再叠加本次改动
+function isChecked(p) {
+  var c = changes[p.n];
+  if (c === "add") return true;
+  if (c === "del") return false;
+  return p.sel === 2;
+}
+
+function toggle(name) {
+  var p = byName[name];
+  if (!p) return;
+  var base = (p.sel === 2);
+  var want = !isChecked(p);
+  if (want === base) delete changes[name];
+  else changes[name] = want ? "add" : "del";
+  saveChanges();
+  render();
+}
+
+function output() {
+  var add = [], del = [];
+  Object.keys(changes).forEach(function (n) {
+    (changes[n] === "add" ? add : del).push(n);
+  });
+  add.sort();
+  del.sort();
+  var parts = add.concat(del.map(function (n) { return "-" + n; }));
+  return { add: add, del: del, str: parts.join(" ") };
+}
+
+function el(tag, cls, text) {
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined) e.textContent = text;
+  return e;
+}
+
+function rowFor(p) {
+  var row = el("div", "row");
+  var lab = el("label");
+  var cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = isChecked(p);
+  cb.addEventListener("change", function () { toggle(p.n); });
+  lab.appendChild(cb);
+  lab.appendChild(el("span", "name", p.n));
+  if (p.t) lab.appendChild(el("span", "t", p.t));
+  row.appendChild(lab);
+  if (p.sel === 2) row.appendChild(el("span", "badge", "基础配置"));
+  else if (p.sel === 1) row.appendChild(el("span", "badge", "依赖已含"));
+  if (changes[p.n]) {
+    var b = el("span", "badge", changes[p.n] === "add" ? "＋新增" : "－移除");
+    b.style.color = changes[p.n] === "add" ? "var(--add)" : "var(--del)";
+    row.appendChild(b);
+  }
+  return row;
+}
+
+function matches(p, q) {
+  return p.n.toLowerCase().indexOf(q) >= 0 ||
+         (!!p.t && p.t.toLowerCase().indexOf(q) >= 0);
+}
+
+function renderFlat(list, pool) {
+  pool.slice(0, MAX_FLAT).forEach(function (p) { list.appendChild(rowFor(p)); });
+  if (pool.length > MAX_FLAT) {
+    list.appendChild(el("div", "empty",
+      "另有 " + (pool.length - MAX_FLAT) + " 条未显示，请把关键词写得更具体"));
+  }
+}
+
+// 默认视图按 Category / Submenu 折叠，展开时才建 DOM，
+// 否则四千个复选框一次铺开在手机上要卡好几秒
+function renderTree(list, pool) {
+  var cats = {}, order = [];
+  pool.forEach(function (p) {
+    var c = p.c || "其它";
+    if (!cats[c]) { cats[c] = []; order.push(c); }
+    cats[c].push(p);
+  });
+  order.sort();
+  order.forEach(function (c) {
+    var d = el("details", "grp");
+    var sm = el("summary");
+    sm.appendChild(el("span", null, c));
+    sm.appendChild(el("span", "n", "(" + cats[c].length + ")"));
+    d.appendChild(sm);
+    var filled = false;
+    d.addEventListener("toggle", function () {
+      if (!d.open || filled) return;
+      filled = true;
+      var subs = {}, so = [];
+      cats[c].forEach(function (p) {
+        var s = p.s || "";
+        if (!subs[s]) { subs[s] = []; so.push(s); }
+        subs[s].push(p);
+      });
+      so.sort();
+      so.forEach(function (s) {
+        if (s) d.appendChild(el("div", "sub2", s));
+        subs[s].forEach(function (p) { d.appendChild(rowFor(p)); });
+      });
+    });
+    list.appendChild(d);
+  });
+}
+
+function render() {
+  var list = $("list");
+  list.textContent = "";
+  var q = $("q").value.trim().toLowerCase();
+  var pool = pkgs;
+  if (onlyChanged) pool = pool.filter(function (p) { return !!changes[p.n]; });
+  if (q.length >= 2) pool = pool.filter(function (p) { return matches(p, q); });
+
+  if (!pkgs.length) {
+    // 索引没加载成功，状态行已经说明原因，这里不再重复
+  } else if (!pool.length) {
+    list.appendChild(el("div", "empty", onlyChanged ? "还没有任何改动"
+      : (q.length >= 2 ? "没有匹配的软件包" : "输入关键词，或展开下面的分类")));
+  } else if (q.length >= 2 || onlyChanged) {
+    renderFlat(list, pool);
+  } else {
+    renderTree(list, pool);
+  }
+
+  var o = output();
+  $("outbox").value = o.str;
+  var t = $("tally");
+  t.textContent = "";
+  if (!o.add.length && !o.del.length) {
+    t.textContent = "未做任何改动";
+  } else {
+    if (o.add.length) t.appendChild(el("span", "a", "新增 " + o.add.length + " 个"));
+    if (o.add.length && o.del.length) t.appendChild(el("span", null, "，"));
+    if (o.del.length) t.appendChild(el("span", "d", "移除 " + o.del.length + " 个"));
+  }
+  $("only").textContent = onlyChanged ? "看全部" : "仅看改动";
+}
+
+function load() {
+  $("status").className = "meta";
+  $("status").textContent = "加载 " + branch + " 的软件包索引…";
+  $("list").textContent = "";
+  pkgs = [];
+  byName = {};
+  fetch("packages-" + branch + ".json", { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      pkgs = d.packages || [];
+      pkgs.forEach(function (p) { byName[p.n] = p; });
+      var base = pkgs.filter(function (p) { return p.sel === 2; }).length;
+      $("status").textContent = "共 " + pkgs.length + " 个可选软件包 · 索引来自构建 " +
+        (d.tag || "未知") + " · 基础配置已含 " + base + " 个";
+      loadChanges();
+      render();
+    })
+    .catch(function (e) {
+      $("status").className = "meta err";
+      $("status").textContent = "取不到 packages-" + branch + ".json（" + e.message +
+        "）。这条线可能还没跑过构建 —— 先在 Actions 里用该分支编译一次，索引会自动生成。";
+      loadChanges();
+      render();
+    });
+}
+
+BRANCHES.forEach(function (b) {
+  var o = document.createElement("option");
+  o.value = b;
+  o.textContent = b;
+  $("branch").appendChild(o);
+});
+branch = store("branch") || BRANCHES[0];
+if (BRANCHES.indexOf(branch) < 0) branch = BRANCHES[0];
+$("branch").value = branch;
+
+$("branch").addEventListener("change", function () {
+  branch = this.value;
+  store("branch", branch);
+  onlyChanged = false;
+  load();
+});
+$("q").addEventListener("input", render);
+$("only").addEventListener("click", function () { onlyChanged = !onlyChanged; render(); });
+$("reset").addEventListener("click", function () {
+  if (!Object.keys(changes).length) return;
+  changes = {};
+  saveChanges();
+  render();
+});
+$("copy").addEventListener("click", function () {
+  var box = $("outbox");
+  if (!box.value) return;
+  var done = function () {
+    var b = $("copy");
+    b.textContent = "已复制";
+    setTimeout(function () { b.textContent = "复制"; }, 1200);
+  };
+  var fallback = function () {
+    box.removeAttribute("readonly");
+    box.select();
+    document.execCommand("copy");
+    box.setAttribute("readonly", "readonly");
+    done();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(box.value).then(done, fallback);
+  } else {
+    fallback();
+  }
+});
+
+load();
+</script>
+</body>
+</html>
