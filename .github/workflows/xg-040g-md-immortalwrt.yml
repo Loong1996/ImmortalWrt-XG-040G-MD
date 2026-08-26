@@ -124,7 +124,7 @@ jobs:
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
-        echo "RELEASE_TAG=XG-040G-MD-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
+        echo "RELEASE_TAG=XG-040G-MD-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
 
     - name: Cache Toolchain(缓存工具链)
       if: env.CACHE_TOOLCHAIN == 'true'
@@ -142,7 +142,8 @@ jobs:
 
     - name: Load Custom Configuration(加载自定义配置)
       run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE $OPENWRT_PATH/.config
+        # 用 cp 而非 mv：保留带注释的原始配置，供后续生成自定义软件包清单
+        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE $OPENWRT_PATH/.config
         cd $OPENWRT_PATH
         make defconfig
         grep "CONFIG_PACKAGE_luci-app-airoha-npu" .config || echo "WARNING: option missing!"
@@ -187,6 +188,75 @@ jobs:
         rm -rf packages feeds.buildinfo version.buildinfo
         echo "FIRMWARE_PATH=$PWD" >> $GITHUB_ENV
 
+    - name: Generate Custom Package List(生成自定义软件包清单)
+      if: steps.compile.outputs.status == 'success'
+      run: |
+        SRC="$GITHUB_WORKSPACE/$CONFIG_FILE"
+        OUT="$FIRMWARE_PATH/custom-packages.txt"
+        [ -e "$SRC" ] || { echo "::error::未找到配置文件 $SRC"; exit 1; }
+        {
+          echo "XG-040G-MD 自定义软件包清单"
+          echo "=================================================================="
+          echo "固件版本 : $RELEASE_TAG"
+          echo "编译分支 : $REPO_BRANCH"
+          echo "内核版本 : $VERSION_KERNEL"
+          echo "内存颗粒 : $DRAM_SIZE"
+          echo "编译时间 : $DATE"
+          echo
+          echo "说明"
+          echo "----"
+          echo "* 下列为 config/xg-040g-md.config 中显式勾选的软件包；"
+          echo "  它们的依赖由 make defconfig 自动补全，未在此列出。"
+          echo "* 固件实际安装的完整软件包列表见同目录下的 *.manifest 文件。"
+          echo "* 本次编译使用的完整内核配置见同目录下的 build.config。"
+          awk '
+            $0 == "#" {
+              if (pend != "") { hdr = pend; pend = "" } else { expect = 1 }
+              next
+            }
+            expect == 1 && substr($0, 1, 2) == "# " {
+              pend = substr($0, 3); expect = 0; next
+            }
+            {
+              expect = 0
+              if ($0 !~ /^CONFIG_(PACKAGE|DEFAULT)_[^=]+=y[ \t]*(#.*)?$/) next
+              line = $0; comment = ""
+              i = index(line, "#")
+              if (i > 0) {
+                comment = substr(line, i + 1)
+                sub(/^[ \t]+/, "", comment)
+                line = substr(line, 1, i - 1)
+              }
+              sub(/[ \t]+$/, "", line)
+              sub(/=y$/, "", line)
+              sub(/^CONFIG_PACKAGE_/, "", line)
+              sub(/^CONFIG_DEFAULT_/, "", line)
+              if (hdr != "") { printf "\n【%s】\n", hdr; hdr = ""; last = "" }
+              norm = line; gsub(/-/, "_", norm)
+              # 形如 dnsmasq_full_dnssec / luci-app-passwall_INCLUDE_Xray 的下划线子选项，归到
+              # 上一个包名之下；kmod-usb-storage-uas 这类连字符独立包不受影响
+              if (last != "" && index(norm, last "_") == 1 && substr(line, length(last) + 1, 1) == "_") {
+                opt = substr(norm, length(last) + 2)
+                sub(/^INCLUDE_/, "", opt)
+                name = "    └ " opt
+              } else {
+                last = norm
+                name = "  " line
+              }
+              if (comment != "") printf "%-46s # %s\n", name, comment
+              else printf "%s\n", name
+            }
+          ' "$SRC"
+          echo
+          echo "使用注意"
+          echo "--------"
+          echo "* Passwall 与 OpenClash 不要同时启用，两者都会接管 nftables 规则链与 dnsmasq 配置。"
+          echo "* dnsmasq / SmartDNS / AdGuardHome 默认均监听 53 端口，刷机后需手动规划端口分配。"
+          echo "* 本固件的 DTS 已按 $DRAM_SIZE 内存颗粒适配，请勿刷入其它容量颗粒的机器。"
+        } > "$OUT"
+        echo "--- $OUT ---"
+        cat "$OUT"
+
     - name: Upload Firmware To Artifact(将固件上传到Artifact)
       if: steps.compile.outputs.status == 'success' && env.FIRMWARE_RELEASE != 'true'
       uses: actions/upload-artifact@main
@@ -203,9 +273,14 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         artifacts: ${{ env.FIRMWARE_PATH }}/*
         body: |
-          **This is OpenWrt Firmware for XG-040G-MD**
+          **This is OpenWrt Firmware for XG-040G-MD（${{ env.DRAM_SIZE }} 内存颗粒版本）**
+          ### ⚠️ 内存颗粒版本
+          - 本固件为 **${{ env.DRAM_SIZE }} 内存颗粒** 版本，DTS 中的 `memory` 与 `linux,usable-memory-range` 已按 ${{ env.DRAM_SIZE }} 适配
+          - **请勿刷入其它容量颗粒的机器**，颗粒容量与固件不匹配会导致无法启动
+          - 未换过颗粒的原厂机器为 512M
           ### 📒 固件信息(XG-040G-MD)
           - 这是 XG-040G-MD 的专属构建
+          - 🧠 内存颗粒：${{ env.DRAM_SIZE }}
           - 💻 目标分支：${{ env.REPO_BRANCH }}
           - ⚽ 固件源码: ${{ env.REPO_URL }}
           - 🌐 默认地址: 192.168.1.1
@@ -214,3 +289,6 @@ jobs:
           - 固件内核版本：${{ env.VERSION_KERNEL }}
           - 固件编译前最后一次➦[主源码](${{ env.REPO_URL }})更新记录
           - ${{ env.VERSION_INFO }}
+          ### 📦 内置软件包
+          - 本次编译的自定义软件包清单见下方附件 `custom-packages.txt`
+          - 固件实际安装的完整包列表见附件中的 `*.manifest`，完整内核配置见 `build.config`
