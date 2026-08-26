@@ -17,7 +17,10 @@
 自建的 luci-app-airoha-npu 之类也在里面。
 
 用法：
-    build-index.py <.packageinfo> <编译后的.config> <源配置文件> <分支> <标签> <输出.json>
+    build-index.py <.packageinfo> <编译后的.config> <源配置文件> <分支> <标签> <输出.json> [附加包]
+
+末位的「附加包」是本次构建经 extra_packages 临时加进去的包名（空格分隔），
+不传则取环境变量 EXTRA_ADD。这些包只在这一次编译里存在，不能算进"已含"。
 """
 import io
 import json
@@ -73,10 +76,12 @@ def selected_packages(path):
 
 
 def main():
-    if len(sys.argv) != 7:
+    if len(sys.argv) not in (7, 8):
         sys.stderr.write(__doc__)
         return 2
-    pkginfo, final_cfg, src_cfg, branch, tag, out = sys.argv[1:]
+    pkginfo, final_cfg, src_cfg, branch, tag, out = sys.argv[1:7]
+    extra = set((sys.argv[7] if len(sys.argv) == 8
+                 else os.environ.get('EXTRA_ADD', '')).split())
 
     pkgs = parse_packageinfo(pkginfo)
     if not pkgs:
@@ -85,6 +90,11 @@ def main():
 
     explicit = selected_packages(src_cfg)   # 配置文件里显式勾选的
     built = selected_packages(final_cfg)    # defconfig 补全依赖后实际编入的
+    # 本次经 extra_packages 临时加进来的包，下次不带参数重编就没有了。
+    # 不剔掉的话它们会被标成"依赖已含"，页面上看着像固件本来就带，是假的。
+    built -= extra
+    if extra:
+        print('已排除本次临时附加的 %d 个包：%s' % (len(extra), ' '.join(sorted(extra))))
 
     for name, p in pkgs.items():
         if name in explicit:

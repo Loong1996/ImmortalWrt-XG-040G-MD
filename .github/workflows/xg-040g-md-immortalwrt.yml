@@ -504,7 +504,8 @@ jobs:
           "$OPENWRT_PATH/.config" \
           "$GITHUB_WORKSPACE/$CONFIG_FILE" \
           "$REPO_BRANCH" "$RELEASE_TAG" \
-          "$PAGES/packages-$REPO_BRANCH.json"
+          "$PAGES/packages-$REPO_BRANCH.json" \
+          "$EXTRA_ADD"
 
         # gh-pages 是只放选包页的孤儿分支，首次运行时现建。
         # 每条编译线各自更新自己那份 json，互不覆盖。

@@ -7,12 +7,12 @@
 <style>
 :root{
   --bg:#f6f7f9; --panel:#fff; --fg:#1b1f24; --dim:#656d76; --line:#d8dee4;
-  --accent:#0969da; --add:#1a7f37; --del:#cf222e; --chip:#eef1f4;
+  --accent:#0969da; --add:#1a7f37; --del:#cf222e; --chip:#eef1f4; --warn:#9a6700;
 }
 @media (prefers-color-scheme:dark){
   :root{
     --bg:#0d1117; --panel:#161b22; --fg:#e6edf3; --dim:#8d96a0; --line:#30363d;
-    --accent:#4493f8; --add:#3fb950; --del:#f85149; --chip:#21262d;
+    --accent:#4493f8; --add:#3fb950; --del:#f85149; --chip:#21262d; --warn:#d29922;
   }
 }
 *{box-sizing:border-box}
@@ -30,7 +30,9 @@ input[type=search]{flex:1;min-width:220px}
 button{cursor:pointer}
 button:hover{border-color:var(--accent)}
 button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
-.meta{color:var(--dim);font-size:13px}
+.meta{color:var(--dim);font-size:13px;margin:0 0 12px}
+.meta.warn{color:var(--warn)}
+.meta.err{color:var(--del)}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
@@ -46,7 +48,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .row .name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
 .row .t{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .badge{font-size:11px;padding:0 6px;border-radius:10px;background:var(--chip);color:var(--dim);white-space:nowrap}
-.empty{padding:24px 12px;text-align:center;color:var(--dim)}
+.empty{padding:24px 12px;text-align:center;color:var(--dim);line-height:1.8}
 .out{position:fixed;left:0;right:0;bottom:0;background:var(--panel);
   border-top:1px solid var(--line);padding:10px 16px}
 .out .inner{max-width:1000px;margin:0 auto;display:flex;gap:8px;align-items:flex-start}
@@ -55,7 +57,6 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
   color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:8px}
 .tally{margin:0 0 6px;font-size:13px}
 .tally .a{color:var(--add)} .tally .d{color:var(--del)}
-.err{color:var(--del)}
 @media (max-width:640px){ .out .inner{flex-direction:column;align-items:stretch} }
 </style>
 </head>
@@ -67,7 +68,7 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
     里 <code>附加软件包</code> 那一栏，再跑一次构建即可。</p>
 
   <div class="bar">
-    <select id="branch"></select>
+    <select id="src"></select>
     <input type="search" id="q" placeholder="搜索包名或描述，至少 2 个字符">
     <button id="only">仅看改动</button>
     <button id="reset">清空改动</button>
@@ -89,12 +90,35 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
 
 <script>
 "use strict";
-// 两条编译线各一份索引，文件名与 workflow 的 repo_branch 选项一一对应。
-// 某条线还没跑过构建时 JSON 不存在，要给出人话提示而不是白屏。
-var BRANCHES = ["openwrt-25.12-XG-040G-MD", "master-XG-040G-MD"];
+
+// 两种数据源：
+//
+// 编译索引 —— 每次构建成功后由 workflow 从源码树的 tmp/.packageinfo 导出，
+//   带描述与分类、含自建包、保证这条分支编得出来。是首选。
+//
+// 官方索引 —— immortalwrt 下载站的 index.json，静态页可直接跨域取（对方开了
+//   CORS）。好处是不用等构建就能用；代价是只有包名和版本，没有描述与分类，
+//   也不含 kmod（在 targets/*/kmods/ 下，目录名带内核版本）和本仓库自建包。
+//   编译索引取不到时自动回落到它，也可以在下拉框里手动选。
+var OFFICIAL_PREFIX = "official:";
+var FEEDS = ["base", "luci", "packages", "routing", "telephony"];
+var OFFICIAL = {
+  // 都用滚动地址，不带具体小版本号，免得哪天过期
+  "openwrt-25.12-XG-040G-MD":
+    "https://downloads.immortalwrt.org/releases/25.12-SNAPSHOT/packages/aarch64_cortex-a53/",
+  "master-XG-040G-MD":
+    "https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/"
+};
+var OPTIONS = [
+  { v: "openwrt-25.12-XG-040G-MD", t: "openwrt-25.12-XG-040G-MD（编译索引）" },
+  { v: "master-XG-040G-MD", t: "master-XG-040G-MD（编译索引）" },
+  { v: OFFICIAL_PREFIX + "openwrt-25.12-XG-040G-MD", t: "官方索引 · 25.12-SNAPSHOT（无描述）" },
+  { v: OFFICIAL_PREFIX + "master-XG-040G-MD", t: "官方索引 · snapshots（无描述）" }
+];
 var MAX_FLAT = 400;   // 搜索结果一次最多渲染多少条，防止上千 DOM 拖垮手机
 
-var pkgs = [], byName = {}, changes = {}, branch = BRANCHES[0], onlyChanged = false;
+var pkgs = [], byName = {}, changes = {};
+var source = OPTIONS[0].v, branch = OPTIONS[0].v, officialMode = false, onlyChanged = false;
 
 function $(id) { return document.getElementById(id); }
 
@@ -106,6 +130,7 @@ function store(key, val) {
   return null;
 }
 
+// 改动按分支存，不按数据源存：同一条线换个索引看，选择应该还在
 function loadChanges() {
   changes = {};
   try {
@@ -116,7 +141,8 @@ function loadChanges() {
 
 function saveChanges() { store("chg:" + branch, JSON.stringify(changes)); }
 
-// 复选框状态 = 基础配置里有没有，再叠加本次改动
+// 复选框状态 = 基础配置里有没有，再叠加本次改动。
+// 官方索引没有 sel，一律按"基础配置里没有"处理。
 function isChecked(p) {
   var c = changes[p.n];
   if (c === "add") return true;
@@ -164,6 +190,7 @@ function rowFor(p) {
   lab.appendChild(el("span", "name", p.n));
   if (p.t) lab.appendChild(el("span", "t", p.t));
   row.appendChild(lab);
+  // 官方索引判断不出这两种状态，硬标就是骗人，所以只在编译索引下显示
   if (p.sel === 2) row.appendChild(el("span", "badge", "基础配置"));
   else if (p.sel === 1) row.appendChild(el("span", "badge", "依赖已含"));
   if (changes[p.n]) {
@@ -188,7 +215,7 @@ function renderFlat(list, pool) {
 }
 
 // 默认视图按 Category / Submenu 折叠，展开时才建 DOM，
-// 否则四千个复选框一次铺开在手机上要卡好几秒
+// 否则几千个复选框一次铺开在手机上要卡好几秒
 function renderTree(list, pool) {
   var cats = {}, order = [];
   pool.forEach(function (p) {
@@ -232,11 +259,14 @@ function render() {
   if (q.length >= 2) pool = pool.filter(function (p) { return matches(p, q); });
 
   if (!pkgs.length) {
-    // 索引没加载成功，状态行已经说明原因，这里不再重复
+    // 索引没加载成功，状态行已经说明原因，这里不重复
+  } else if (officialMode && q.length < 2 && !onlyChanged) {
+    list.appendChild(el("div", "empty",
+      "官方索引只有包名，一万多条铺不开，也没有分类可折叠。请在上方搜索框输入至少 2 个字符查找。"));
   } else if (!pool.length) {
     list.appendChild(el("div", "empty", onlyChanged ? "还没有任何改动"
       : (q.length >= 2 ? "没有匹配的软件包" : "输入关键词，或展开下面的分类")));
-  } else if (q.length >= 2 || onlyChanged) {
+  } else if (q.length >= 2 || onlyChanged || officialMode) {
     renderFlat(list, pool);
   } else {
     renderTree(list, pool);
@@ -256,48 +286,102 @@ function render() {
   $("only").textContent = onlyChanged ? "看全部" : "仅看改动";
 }
 
-function load() {
-  $("status").className = "meta";
-  $("status").textContent = "加载 " + branch + " 的软件包索引…";
-  $("list").textContent = "";
-  pkgs = [];
+function setStatus(text, cls) {
+  var s = $("status");
+  s.className = "meta" + (cls ? " " + cls : "");
+  s.textContent = text;
+}
+
+function apply(list, official, text, cls) {
+  pkgs = list;
   byName = {};
+  pkgs.forEach(function (p) { byName[p.n] = p; });
+  officialMode = official;
+  setStatus(text, cls);
+  loadChanges();
+  render();
+}
+
+function loadOfficial(fallbackReason) {
+  var base = OFFICIAL[branch];
+  if (!base) {
+    apply([], true, "没有为 " + branch + " 配置官方索引地址。", "err");
+    return;
+  }
+  setStatus((fallbackReason ? fallbackReason + " " : "") + "正在从 immortalwrt 官方源取包名清单…",
+            fallbackReason ? "warn" : null);
+  Promise.all(FEEDS.map(function (f) {
+    return fetch(base + f + "/index.json", { cache: "no-cache" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (d) { return { f: f, p: d.packages || {} }; })
+      .catch(function () { return { f: f, p: null }; });
+  })).then(function (rs) {
+    var list = [], failed = [];
+    rs.forEach(function (r) {
+      if (!r.p) { failed.push(r.f); return; }
+      Object.keys(r.p).forEach(function (n) {
+        // 官方索引没有描述，把 feed 名和版本号放进描述位，好歹有点信息
+        list.push({ n: n, t: r.f + " · v" + r.p[n], c: "", s: "" });
+      });
+    });
+    if (!list.length) {
+      apply([], true, "官方索引也取不到（" + failed.join("、") +
+        "）。可能是网络不通，或下载站正在更新，稍后再试。", "err");
+      return;
+    }
+    list.sort(function (a, b) { return a.n < b.n ? -1 : (a.n > b.n ? 1 : 0); });
+    var msg = (fallbackReason ? fallbackReason + " 已回落到官方索引：" : "immortalwrt 官方索引：") +
+      "共 " + list.length + " 个包名。官方索引没有描述与分类，也不含 kmod 和本仓库自建包，" +
+      "更不保证这条源码树都编得出来 —— 真编不出来的，workflow 会在编译前就报错拦下。";
+    if (failed.length) msg += " 另有 " + failed.length + " 个 feed 取失败：" + failed.join("、") + "。";
+    apply(list, true, msg, "warn");
+  });
+}
+
+function loadBuilt() {
+  setStatus("加载 " + branch + " 的编译索引…");
   fetch("packages-" + branch + ".json", { cache: "no-cache" })
     .then(function (r) {
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     })
     .then(function (d) {
-      pkgs = d.packages || [];
-      pkgs.forEach(function (p) { byName[p.n] = p; });
-      var base = pkgs.filter(function (p) { return p.sel === 2; }).length;
-      $("status").textContent = "共 " + pkgs.length + " 个可选软件包 · 索引来自构建 " +
-        (d.tag || "未知") + " · 基础配置已含 " + base + " 个";
-      loadChanges();
-      render();
+      var list = d.packages || [];
+      var base = list.filter(function (p) { return p.sel === 2; }).length;
+      apply(list, false, "共 " + list.length + " 个可选软件包 · 索引来自构建 " +
+        (d.tag || "未知") + " · 基础配置已含 " + base + " 个");
     })
     .catch(function (e) {
-      $("status").className = "meta err";
-      $("status").textContent = "取不到 packages-" + branch + ".json（" + e.message +
-        "）。这条线可能还没跑过构建 —— 先在 Actions 里用该分支编译一次，索引会自动生成。";
-      loadChanges();
-      render();
+      loadOfficial("取不到 " + branch + " 的编译索引（" + e.message + "），这条线可能还没跑过构建。");
     });
 }
 
-BRANCHES.forEach(function (b) {
-  var o = document.createElement("option");
-  o.value = b;
-  o.textContent = b;
-  $("branch").appendChild(o);
-});
-branch = store("branch") || BRANCHES[0];
-if (BRANCHES.indexOf(branch) < 0) branch = BRANCHES[0];
-$("branch").value = branch;
+function load() {
+  var official = source.indexOf(OFFICIAL_PREFIX) === 0;
+  branch = official ? source.slice(OFFICIAL_PREFIX.length) : source;
+  pkgs = [];
+  byName = {};
+  $("list").textContent = "";
+  if (official) loadOfficial(null);
+  else loadBuilt();
+}
 
-$("branch").addEventListener("change", function () {
-  branch = this.value;
-  store("branch", branch);
+OPTIONS.forEach(function (o) {
+  var opt = document.createElement("option");
+  opt.value = o.v;
+  opt.textContent = o.t;
+  $("src").appendChild(opt);
+});
+source = store("src") || OPTIONS[0].v;
+if (!OPTIONS.some(function (o) { return o.v === source; })) source = OPTIONS[0].v;
+$("src").value = source;
+
+$("src").addEventListener("change", function () {
+  source = this.value;
+  store("src", source);
   onlyChanged = false;
   load();
 });
