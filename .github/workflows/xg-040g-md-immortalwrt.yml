@@ -1,5 +1,9 @@
 name: XG-040G-MD
 
+# 让 Actions 列表直接显示本次选了什么，省得点进去翻日志里的 env 块。
+# GitHub 表达式没有 replace，分支短名只能靠三元嵌套写。
+run-name: "XG-040G-MD · ${{ inputs.repo_branch == 'master-XG-040G-MD' && 'master' || (inputs.repo_branch == 'openwrt-25.12-XG-040G-MD' && '25.12' || inputs.repo_branch) }} · ${{ inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}"
+
 on:
   workflow_dispatch:
     inputs:
