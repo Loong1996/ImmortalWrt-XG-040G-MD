@@ -44,9 +44,9 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |
-| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷 | 否 |
+| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，自动初始化 | 否 |
 | `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
-| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷 | 否 |
+| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，**需自行转存** | 否 |
 | （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
 
 Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线只有一个设备，tag 不带变体段。
@@ -62,8 +62,9 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 * **前提**：机器已刷入 [Nwrt 提供的 `tcboot.bin`](https://nwrt.kuroneko.host/flashdocs/XG-040G-MD.html)
 * 刷机用附件 `factory.bin`，日常升级用 `sysupgrade.bin`
 * 原厂分区表整片被覆盖 —— `romfile`、`nsb_1`/`nsb_2`、`bosa`、`ri`、`config`、`data` 全部消失
-* MAC 取自 ubi 中名为 `ri` 的卷。该卷需用原厂 `ri` 分区的备份创建；不存在时退化为随机 MAC
-* 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，**可从 25.12 固件直接 sysupgrade 过来**
+* MAC 取自 ubi 中名为 `ri` 的卷。`factory.bin` 会预留一个全零的 `ri` 占位卷，首次启动时固件自动把本次的 MAC 写进去，此后每次启动都是同一个值 —— **不需要原厂备份也能正常工作**
+* 有原厂 `ri` 备份的，刷完后用 `ubiupdatevol` 写入即可得到真实硬件 MAC；`sysupgrade` 只重建 `kernel` / `rootfs` / `rootfs_data` 三个卷，不会覆盖 `ri`
+* 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`。但 **25.12 线的 ubi 里没有 `ri` 卷，直接 sysupgrade 过来会因缺卷而无网络**，必须刷一次 `factory.bin`（见下方升级表）
 
 #### `stock` —— 寄生原厂分区，唯一可回退
 
@@ -97,19 +98,28 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 * 额外产出 `*-recovery.itb`，是 initramfs 救援镜像，另外三种变体都没有
 * 升级用 `sysupgrade.itb`
 * 原厂 `ri` 与 `bosa` 由官方转换流程转存为同名 UBI 卷，MAC 得以保留
+* ⚠️ **必须完成 `ri` 卷的转存**。该变体没有 `tcboot` 那样的占位卷兜底，`ri` 缺失时 `airoha_eth` 会因 nvmem 拿不到 MAC 而永久停在 deferred probe，整机无网络且日志里没有任何报错，表现为：
+
+  ```
+  mt7530-mmio 1fb58000.switch: Failed to register DSA switch: -517
+  platform 1fb58000.switch: deferred probe pending: (reason unknown)
+  platform 1fb50000.ethernet: deferred probe pending: (reason unknown)
+  ```
+
+  可用 `cat /sys/kernel/debug/devices_deferred` 与 `ubinfo -a` 确认
 
 #### 互相能不能升级
 
 | 从 → 到 | 可否 |
 | --- | --- |
-| 25.12 `bell` → master `tcboot` | **可以直接 sysupgrade**（分区表一致 + `SUPPORTED_DEVICES`） |
+| 25.12 `bell` → master `tcboot` | 分区表一致，`sysupgrade` 能刷进去，但 **25.12 的 ubi 没有 `ri` 卷，刷完会无网络**。需改刷一次 `factory.bin`，之后即可正常 `sysupgrade` |
 | `tcboot` ↔ `stock` | 不可以，分区表完全不同，需完整刷机 |
 | `tcboot` ↔ `ubi` | 不可以，引导程序不同，需完整刷机 |
 | `stock` ↔ `ubi` | 不可以，需完整刷机 |
 
 > ⚠️ **`tcboot` 与 `ubi` 都会覆盖原厂引导和原厂分区表。** 其中 `ri`（MAC、序列号）与 `bosa`（光模块校准）是逐机唯一的出厂数据，没有公开来源。**刷这两种之前务必做整片 flash 备份**，参见上文的[原厂分区备份教程](https://www.right.com.cn/forum/thread-8467912-1-1.html)。
 >
-> ⚠️ **`tcboot` 变体尚未经实机验证。** 分区偏移、`UBINIZE_OPTS`、tcboot 能否引导其产出的 `factory.bin` 均只做了静态核对。
+> ℹ️ **`tcboot` 变体的引导已实机验证**：分区偏移与 `UBINIZE_OPTS` 正确，tcboot 能引导其产出的镜像并进入系统。早期版本因 ubi 中缺少 `ri` 卷导致网络驱动永久 deferred probe，已由 `factory.bin` 预留占位卷修复；修复后的网络功能待复测。
 >
 > ⚠️ 25.12 线的 `bell_xg-040g-md` 没有声明 `all_flash` 分区，**在跑着的系统里无法直接 dd 整片 flash**；master 的三个变体都有。
 
