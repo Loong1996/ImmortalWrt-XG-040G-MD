@@ -38,27 +38,80 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 **master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，外加一个 tcboot 引导变体。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
 
-#### master 线的三个设备变体
+### 设备变体（分区布局与刷机方式）
 
-| 变体 | 引导 | 布局 | rootfs 空间 | MAC 来源 |
-| --- | --- | --- | --- | --- |
-| **`nokia_xg-040g-md-tcboot`**（默认） | 第三方 `tcboot.bin` | bootloader 512K + env 512K + ubi **255 MB** | 最大 | ubi 中的 `ri` 卷 |
-| `nokia_xg-040g-md` | 原厂引导 | 保留原厂 Nokia 分区表，kernel 进 `nsb_1`，rootfs 寄生 `data` 分区 | **129 MB** | 原厂 `ri` 分区，真实硬件 MAC |
-| `nokia_xg-040g-md-ubi` | OpenWrt U-Boot | bl2 128K + ubi **255.875 MB** | 最大 | ubi 中的 `ri` 卷 |
+实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一（`tcboot` / `stock` / `ubi`，默认 `tcboot`），workflow 会自动改写 `.config` 的设备符号，25.12 分支则忽略该输入并给出 warning。
 
-构建 master 线时，变体由 `Run workflow` 的 **device_variant** 输入选择（`tcboot` / `stock` / `ubi`，默认 `tcboot`），无需改文件；workflow 会自动改写 `.config` 里的设备符号，并把结果写进 Release 标题、正文与 `custom-packages.txt`。25.12 分支只有一个设备，该输入会被忽略并给出 warning。
+| 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
+| --- | --- | --- | --- | --- | --- |
+| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷 | 否 |
+| `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
+| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷 | 否 |
+| （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
 
-master 线的 Release tag 会带上变体名以便区分，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线不带（只有一个设备），保持 `XG-040G-MD-1G-20260826-42`。
+Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线只有一个设备，tag 不带变体段。
 
-tcboot 变体的分区表、`IMAGE_SIZE`、`KERNEL_SIZE`、`UBINIZE_OPTS` 与 25.12 线的 `bell_xg-040g-md` 逐项一致，并声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，因此**可以从 25.12 固件直接 sysupgrade 过去，不必完整刷机**。
+#### `tcboot` —— 第三方引导，空间最大
 
-`nokia_xg-040g-md`（原厂布局）是唯一保留原厂 `nsb_2` 备份 bank、`romfile`、`config` 与真实 MAC 的变体，也是唯一能刷回原厂固件的，代价是 rootfs 空间减半。切换变体见 `config/xg-040g-md-master.config` 头部说明。
+```
+0x00000000   512 KB   bootloader    ← 第三方 tcboot.bin
+0x00080000   512 KB   env
+0x00100000   255 MB   ubi           ← kernel + rootfs + overlay
+```
 
-> ⚠️ **tcboot 与 ubi 变体会覆盖原厂 `ri` 分区（MAC 来源）。** 两者改为从 ubi 中名为 `ri` 的卷读取 MAC，该卷需用原厂 `ri` 分区的备份创建。若卷不存在，预期退化为内核随机 MAC —— 与 25.12 线现状（`99_fix-airoha-mac` 每次首启随机生成）相当。
+* **前提**：机器已刷入 [Nwrt 提供的 `tcboot.bin`](https://nwrt.kuroneko.host/flashdocs/XG-040G-MD.html)
+* 刷机用附件 `factory.bin`，日常升级用 `sysupgrade.bin`
+* 原厂分区表整片被覆盖 —— `romfile`、`nsb_1`/`nsb_2`、`bosa`、`ri`、`config`、`data` 全部消失
+* MAC 取自 ubi 中名为 `ri` 的卷。该卷需用原厂 `ri` 分区的备份创建；不存在时退化为随机 MAC
+* 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，**可从 25.12 固件直接 sysupgrade 过来**
+
+#### `stock` —— 寄生原厂分区，唯一可回退
+
+```
+0x00000000   512 KB    bootloader   原厂，不动
+0x00080000   256 KB    romfile      不动
+0x000c0000   40.5 MB   nsb_1        ← kernel (8 MB) 写这里
+0x02940000   40.5 MB   nsb_2        原厂备份 bank，不动
+0x051c0000   256 KB    bosa         光模块校准数据，不动
+0x05200000   256 KB    ri           MAC / 序列号，不动
+0x052c0000   10 MB     config       原厂配置，不动
+0x05cc0000   129 MB    data         ← rootfs UBI 写这里
+0x0e1a0000   10 MB     log          不动
+```
+
+* **不碰引导程序，变砖风险最低**
+* MAC 从原厂 `ri` 分区经 nvmem 读取，是真实硬件 MAC，不需要任何脚本
+* 保留 `nsb_2` 备份 bank 与全部出厂数据，**是唯一能刷回原厂固件的变体**
+* 刷机用附件 `factory-kernel.bin` + `factory-rootfs.bin`
+* 代价：rootfs 空间只有 129 MB（其余三种是 255 MB）
+
+#### `ubi` —— OpenWrt U-Boot，带救援镜像
+
+```
+0x00000000   128 KB      bl2
+0x00020000   255.875 MB  ubi
+```
+
+* **会替换引导程序**。附件 `preloader.bin` 与 `bl31-uboot.fip` 需经 USB-TTL 走 BootROM 恢复流程刷入
+* 这两个附件由 workflow 自动构建：`uboot-airoha` 的 `BUILD_DEVICES:=nokia_xg-040g-md-ubi` 会在选中该变体时自动勾选 U-Boot 包，它再拉 ATF 的 `trusted-firmware-a-an7581-bl31`，最后由 `fiptool` 打成 FIP
+* 额外产出 `*-recovery.itb`，是 initramfs 救援镜像，另外三种变体都没有
+* 升级用 `sysupgrade.itb`
+* 原厂 `ri` 与 `bosa` 由官方转换流程转存为同名 UBI 卷，MAC 得以保留
+
+#### 互相能不能升级
+
+| 从 → 到 | 可否 |
+| --- | --- |
+| 25.12 `bell` → master `tcboot` | **可以直接 sysupgrade**（分区表一致 + `SUPPORTED_DEVICES`） |
+| `tcboot` ↔ `stock` | 不可以，分区表完全不同，需完整刷机 |
+| `tcboot` ↔ `ubi` | 不可以，引导程序不同，需完整刷机 |
+| `stock` ↔ `ubi` | 不可以，需完整刷机 |
+
+> ⚠️ **`tcboot` 与 `ubi` 都会覆盖原厂引导和原厂分区表。** 其中 `ri`（MAC、序列号）与 `bosa`（光模块校准）是逐机唯一的出厂数据，没有公开来源。**刷这两种之前务必做整片 flash 备份**，参见上文的[原厂分区备份教程](https://www.right.com.cn/forum/thread-8467912-1-1.html)。
 >
-> ⚠️ **tcboot 变体尚未经实机验证。** 分区偏移、`UBINIZE_OPTS`、tcboot 能否引导其产出的 `factory.bin` 均只做了静态核对。首次刷入前接好 USB-TTL。
+> ⚠️ **`tcboot` 变体尚未经实机验证。** 分区偏移、`UBINIZE_OPTS`、tcboot 能否引导其产出的 `factory.bin` 均只做了静态核对。
 >
-> ⚠️ 三个变体之间（tcboot ↔ stock ↔ ubi）分区表互不相同，**不能互相 sysupgrade**，切换必须完整刷机。
+> ⚠️ 25.12 线的 `bell_xg-040g-md` 没有声明 `all_flash` 分区，**在跑着的系统里无法直接 dd 整片 flash**；master 的三个变体都有。
 
 此外 25.12 分支的内核配置已启用完整 IPsec/XFRM 支持。
 
@@ -98,7 +151,7 @@ git push --force-with-lease
 * 不在官方 feed 中的第三方插件，需在 workflow 的 `Install Feeds` 步骤前添加克隆步骤
 
 ## OpenWrt Snapshots
-![snapshot1](snapshots/screenshot.bmp)
+![snapshot1](snapshots/screenshot.jpg)
 ---
 
 ### 鸣谢 / Credits

@@ -158,11 +158,14 @@ jobs:
               *)      echo "::error::不支持的 device_variant=$DEVICE_VARIANT"; exit 1 ;;
             esac
             FLAVOR="$DEVICE_VARIANT"
+            VARIANT_LABEL="$DEVICE_VARIANT"
             ;;
           *)
             CONFIG_FILE=config/xg-040g-md.config
             DEVICE_SYMBOL=bell_xg-040g-md
             FLAVOR=""
+            # 25.12 线的 bell_xg-040g-md 分区布局与 tcboot 变体一致
+            VARIANT_LABEL="tcboot"
             if [ "$DEVICE_VARIANT" != "tcboot" ]; then
               echo "::warning::25.12 分支只有 bell_xg-040g-md 一个设备，已忽略 device_variant=$DEVICE_VARIANT"
             fi
@@ -170,6 +173,7 @@ jobs:
         esac
         echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
         echo "DEVICE_SYMBOL=$DEVICE_SYMBOL" >> $GITHUB_ENV
+        echo "VARIANT_LABEL=$VARIANT_LABEL" >> $GITHUB_ENV
         echo "FLAVOR=$FLAVOR" >> $GITHUB_ENV
         echo "使用配置: $CONFIG_FILE    设备: $DEVICE_SYMBOL"
         # 刷机方式随变体而变，写进 Release 正文，避免下载者搞错
@@ -365,7 +369,7 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         artifacts: ${{ env.FIRMWARE_PATH }}/*
         body: |
-          **This is OpenWrt Firmware for XG-040G-MD（${{ env.DRAM_SIZE }} 内存颗粒版本）**
+          **This is OpenWrt Firmware for XG-040G-MD（${{ env.DRAM_SIZE }} 内存颗粒 · ${{ env.VARIANT_LABEL }} 变体）**
           ### ⚠️ 内存颗粒版本
           - 本固件为 **${{ env.DRAM_SIZE }} 内存颗粒** 版本，DTS 中的 `memory` 与 `linux,usable-memory-range` 已按 ${{ env.DRAM_SIZE }} 适配
           - **请勿刷入其它容量颗粒的机器**，颗粒容量与固件不匹配会导致无法启动
@@ -373,6 +377,7 @@ jobs:
           ### 📒 固件信息(XG-040G-MD)
           - 这是 XG-040G-MD 的专属构建
           - 🧠 内存颗粒：${{ env.DRAM_SIZE }}
+          - 🧩 编译变体：**${{ env.VARIANT_LABEL }}**
           - 📐 设备定义：`${{ env.DEVICE_SYMBOL }}`
           - 💻 目标分支：${{ env.REPO_BRANCH }}
           - ⚽ 固件源码: ${{ env.REPO_URL }}
