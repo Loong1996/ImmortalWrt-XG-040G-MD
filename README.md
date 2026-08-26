@@ -7,7 +7,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 ### 项目说明
 
 * 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)，设备支持压缩为单个提交叠在上游之上，便于持续跟进。设备补丁最初来自 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt)。
-* 基于 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt) 仓库的补丁适配 SkyHigh S35ML02G300 和 Fudan Micro FM25G02B 闪存。
+* 闪存适配（SkyHigh S35ML02G300 与 Fudan Micro FM25G02B）：25.12 线的 SkyHigh 支持仍由本项目自带（`backport-6.12/430`、`431`，源自 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt)），FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供；master 线两者均由上游 6.18 承担。
 * 基于 [XG-040G-MD (AN7581) NPU 固件加载报错分析与修复记录](https://github.com/xiangtailiang/OpenWrt-for-XG-040G-MD/blob/main/docs/npu-firmware-load.md) 修复内核日志报错：
     ```text
     airoha-npu 1e900000.npu: Direct firmware load for airoha/en7581_npu_rv32.bin failed with error -2
@@ -77,7 +77,12 @@ git push --force-with-lease
 
 ### 自定义软件包
 
-编辑 [`config/xg-040g-md.config`](config/xg-040g-md.config) 后提交即可，依赖由 `make defconfig` 自动补全。当前已内置：
+两条线各有一份配置，改包需**两份都改**（内容目前完全一致）：
+
+* 25.12 线 —— [`config/xg-040g-md.config`](config/xg-040g-md.config)
+* master 线 —— [`config/xg-040g-md-master.config`](config/xg-040g-md-master.config)
+
+编辑后提交即可，依赖由 `make defconfig` 自动补全。当前已内置：
 
 * **代理**：Passwall（Xray / sing-box / geoview）、OpenClash
 * **DNS**：dnsmasq-full（dnssec + ipset + nftset）、SmartDNS、AdGuardHome

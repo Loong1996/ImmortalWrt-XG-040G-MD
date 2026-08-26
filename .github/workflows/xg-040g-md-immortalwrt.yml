@@ -37,6 +37,7 @@ env:
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
   DEVICE_SUBTARGET: an7581
+  # 默认值；实际使用哪份由 Generate Variables 按分支覆写
   CONFIG_FILE: config/xg-040g-md.config
   CACHE_TOOLCHAIN: true
   UPLOAD_BIN_DIR: false
@@ -171,6 +172,36 @@ jobs:
         echo "DEVICE_SYMBOL=$DEVICE_SYMBOL" >> $GITHUB_ENV
         echo "FLAVOR=$FLAVOR" >> $GITHUB_ENV
         echo "使用配置: $CONFIG_FILE    设备: $DEVICE_SYMBOL"
+        # 刷机方式随变体而变，写进 Release 正文，避免下载者搞错
+        {
+          echo 'LAYOUT_NOTE<<LAYOUTEOF'
+          case "$DEVICE_SYMBOL" in
+            bell_xg-040g-md)
+              echo "- 分区布局：bootloader 512K + env 512K + ubi 255 MB"
+              echo "- 需先刷入第三方 \`tcboot.bin\` 作为引导"
+              echo "- 原厂分区（含 MAC 所在的 \`ri\`、光模块校准的 \`bosa\`）已被覆盖，无整片备份则无法回退原厂"
+              ;;
+            nokia_xg-040g-md-tcboot)
+              echo "- 分区布局：bootloader 512K + env 512K + ubi 255 MB，与 25.12 线一致"
+              echo "- 需先刷入第三方 \`tcboot.bin\` 作为引导"
+              echo "- **可从 25.12 线固件直接 sysupgrade**，无需完整刷机"
+              echo "- MAC 取自 ubi 中的 \`ri\` 卷；该卷不存在时退化为随机 MAC"
+              ;;
+            nokia_xg-040g-md)
+              echo "- **保留原厂引导与原厂分区表**，kernel 写入 \`nsb_1\`，rootfs 寄生 \`data\` 分区（129 MB）"
+              echo "- MAC 从原厂 \`ri\` 分区读取，为真实硬件 MAC"
+              echo "- 保留原厂 \`nsb_2\` 备份 bank，是唯一可刷回原厂固件的变体"
+              echo "- 刷机用附件 \`factory-kernel.bin\` + \`factory-rootfs.bin\`"
+              ;;
+            nokia_xg-040g-md-ubi)
+              echo "- OpenWrt U-Boot 布局：bl2 128K + ubi 255.875 MB"
+              echo "- **会替换引导程序**，附件 \`preloader.bin\` 与 \`bl31-uboot.fip\` 需经 USB-TTL 刷入"
+              echo "- 附件 \`*-recovery.itb\` 为 initramfs 救援镜像"
+              echo "- MAC 取自 ubi 中的 \`ri\` 卷，原厂 \`bosa\` 亦需转存为同名卷"
+              ;;
+          esac
+          echo LAYOUTEOF
+        } >> $GITHUB_ENV
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
@@ -266,7 +297,7 @@ jobs:
           echo
           echo "说明"
           echo "----"
-          echo "* 下列为 config/xg-040g-md.config 中显式勾选的软件包；"
+          echo "* 下列为 $CONFIG_FILE 中显式勾选的软件包；"
           echo "  它们的依赖由 make defconfig 自动补全，未在此列出。"
           echo "* 固件实际安装的完整软件包列表见同目录下的 *.manifest 文件。"
           echo "* 本次编译使用的完整内核配置见同目录下的 build.config。"
@@ -347,6 +378,8 @@ jobs:
           - ⚽ 固件源码: ${{ env.REPO_URL }}
           - 🌐 默认地址: 192.168.1.1
           - 🔑 默认密码: 无
+          ### 💾 分区布局与刷机方式
+          ${{ env.LAYOUT_NOTE }}
           ### 🧊 固件版本
           - 固件内核版本：${{ env.VERSION_KERNEL }}
           - 固件编译前最后一次➦[主源码](${{ env.REPO_URL }})更新记录
