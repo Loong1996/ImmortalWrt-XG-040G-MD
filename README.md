@@ -46,6 +46,10 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | `nokia_xg-040g-md` | 原厂引导 | 保留原厂 Nokia 分区表，kernel 进 `nsb_1`，rootfs 寄生 `data` 分区 | **129 MB** | 原厂 `ri` 分区，真实硬件 MAC |
 | `nokia_xg-040g-md-ubi` | OpenWrt U-Boot | bl2 128K + ubi **255.875 MB** | 最大 | ubi 中的 `ri` 卷 |
 
+构建 master 线时，变体由 `Run workflow` 的 **device_variant** 输入选择（`tcboot` / `stock` / `ubi`，默认 `tcboot`），无需改文件；workflow 会自动改写 `.config` 里的设备符号，并把结果写进 Release 标题、正文与 `custom-packages.txt`。25.12 分支只有一个设备，该输入会被忽略并给出 warning。
+
+master 线的 Release tag 会带上变体名以便区分，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线不带（只有一个设备），保持 `XG-040G-MD-1G-20260826-42`。
+
 tcboot 变体的分区表、`IMAGE_SIZE`、`KERNEL_SIZE`、`UBINIZE_OPTS` 与 25.12 线的 `bell_xg-040g-md` 逐项一致，并声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，因此**可以从 25.12 固件直接 sysupgrade 过去，不必完整刷机**。
 
 `nokia_xg-040g-md`（原厂布局）是唯一保留原厂 `nsb_2` 备份 bank、`romfile`、`config` 与真实 MAC 的变体，也是唯一能刷回原厂固件的，代价是 rootfs 空间减半。切换变体见 `config/xg-040g-md-master.config` 头部说明。

@@ -11,6 +11,15 @@ on:
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
+      device_variant:
+        description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
+        required: true
+        default: 'tcboot'
+        type: choice
+        options:
+          - tcboot
+          - stock
+          - ubi
       dram_size:
         description: '板上内存颗粒容量（换过颗粒才需要改）'
         required: true
@@ -23,6 +32,7 @@ on:
 
 env:
   DRAM_SIZE: ${{ github.event.inputs.dram_size }}
+  DEVICE_VARIANT: ${{ github.event.inputs.device_variant }}
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
@@ -134,17 +144,38 @@ jobs:
     - name: Generate Variables(生成变量)
       run: |
         SOURCE_REPO="$(echo $REPO_URL | awk -F '/' '{print $(NF)}')"
-        # master 线用上游原生 nokia_xg-040g-md 设备定义、内核 6.18，配置不同
+        # 两条线的配置与设备符号都不同：
+        #   25.12 线  自制 bell_xg-040g-md，内核 6.12，只有这一个设备
+        #   master 线 上游原生，内核 6.18，三个变体由 device_variant 输入选择
         case "$REPO_BRANCH" in
-          master-XG-040G-MD) CONFIG_FILE=config/xg-040g-md-master.config ;;
-          *)                 CONFIG_FILE=config/xg-040g-md.config ;;
+          master-XG-040G-MD)
+            CONFIG_FILE=config/xg-040g-md-master.config
+            case "$DEVICE_VARIANT" in
+              tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
+              stock)  DEVICE_SYMBOL=nokia_xg-040g-md ;;
+              ubi)    DEVICE_SYMBOL=nokia_xg-040g-md-ubi ;;
+              *)      echo "::error::不支持的 device_variant=$DEVICE_VARIANT"; exit 1 ;;
+            esac
+            FLAVOR="$DEVICE_VARIANT"
+            ;;
+          *)
+            CONFIG_FILE=config/xg-040g-md.config
+            DEVICE_SYMBOL=bell_xg-040g-md
+            FLAVOR=""
+            if [ "$DEVICE_VARIANT" != "tcboot" ]; then
+              echo "::warning::25.12 分支只有 bell_xg-040g-md 一个设备，已忽略 device_variant=$DEVICE_VARIANT"
+            fi
+            ;;
         esac
         echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
-        echo "使用配置: $CONFIG_FILE"
+        echo "DEVICE_SYMBOL=$DEVICE_SYMBOL" >> $GITHUB_ENV
+        echo "FLAVOR=$FLAVOR" >> $GITHUB_ENV
+        echo "使用配置: $CONFIG_FILE    设备: $DEVICE_SYMBOL"
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
-        echo "RELEASE_TAG=XG-040G-MD-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
+        # 25.12 线只有一个设备，FLAVOR 为空则不插入该段
+        echo "RELEASE_TAG=XG-040G-MD${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
 
     - name: Cache Toolchain(缓存工具链)
       if: env.CACHE_TOOLCHAIN == 'true'
@@ -165,7 +196,16 @@ jobs:
         # 用 cp 而非 mv：保留带注释的原始配置，供后续生成自定义软件包清单
         [ -e $CONFIG_FILE ] && cp $CONFIG_FILE $OPENWRT_PATH/.config
         cd $OPENWRT_PATH
+        # 按选定变体改写设备符号：先清掉配置里所有 an7581 设备行，再插入选中的那个
+        sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+        sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+        sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+          || { echo "::error::设备符号写入失败: $DEVICE_SYMBOL"; exit 1; }
         make defconfig
+        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+          || { echo "::error::defconfig 后设备符号丢失，$DEVICE_SYMBOL 在该源码分支中可能不存在"; exit 1; }
+        echo "已选定设备: $DEVICE_SYMBOL"
         grep "CONFIG_PACKAGE_luci-app-airoha-npu" .config || echo "WARNING: option missing!"
 
     - name: Download DL Package(下载DL软件包)
@@ -221,6 +261,7 @@ jobs:
           echo "编译分支 : $REPO_BRANCH"
           echo "内核版本 : $VERSION_KERNEL"
           echo "内存颗粒 : $DRAM_SIZE"
+          echo "设备定义 : $DEVICE_SYMBOL"
           echo "编译时间 : $DATE"
           echo
           echo "说明"
@@ -301,6 +342,7 @@ jobs:
           ### 📒 固件信息(XG-040G-MD)
           - 这是 XG-040G-MD 的专属构建
           - 🧠 内存颗粒：${{ env.DRAM_SIZE }}
+          - 📐 设备定义：`${{ env.DEVICE_SYMBOL }}`
           - 💻 目标分支：${{ env.REPO_BRANCH }}
           - ⚽ 固件源码: ${{ env.REPO_URL }}
           - 🌐 默认地址: 192.168.1.1
