@@ -30,17 +30,31 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 |
 | --- | --- | --- | --- | --- |
 | `openwrt-25.12-XG-040G-MD` | immortalwrt `openwrt-25.12`，落后 0 | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` |
-| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md` | 6.18 | `config/xg-040g-md-master.config` |
+| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-tcboot` | 6.18 | `config/xg-040g-md-master.config` |
 
-两条线各自只有 1 个设备提交叠在上游之上，跟进上游只需 rebase 一次。
+两条线各自只有 1~2 个提交叠在上游之上，跟进上游只需 rebase 一次。
 
 **25.12 线**：上游没有 XG-040G-MD 支持，设备 DTS、镜像定义与 SkyHigh S35ML 闪存补丁（`backport-6.12/430`、`431`）均由本项目自带。FM25G01B/FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供。
 
-**master 线**：上游 master 已内核 6.18 且原生支持本机型，提供 `nokia_xg-040g-md`（保留原厂引导）与 `nokia_xg-040g-md-ubi`（OpenWrt U-Boot 布局，额外产出 `preloader.bin` / `bl31-uboot.fip`）两个变体。自制的 `bell_xg-040g-md` 已弃用，闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu` 与一行 `nf_conntrack_max`。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
+**master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，外加一个 tcboot 引导变体。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
 
-> ⚠️ **两条线的分区布局不同，不能互相 sysupgrade。** 25.12 线 `IMAGE_SIZE` 为 261120k，master 线 stock 变体为 131968k。首次切换必须完整刷机，并接好 USB-TTL。
+#### master 线的三个设备变体
+
+| 变体 | 引导 | 布局 | rootfs 空间 | MAC 来源 |
+| --- | --- | --- | --- | --- |
+| **`nokia_xg-040g-md-tcboot`**（默认） | 第三方 `tcboot.bin` | bootloader 512K + env 512K + ubi **255 MB** | 最大 | ubi 中的 `ri` 卷 |
+| `nokia_xg-040g-md` | 原厂引导 | 保留原厂 Nokia 分区表，kernel 进 `nsb_1`，rootfs 寄生 `data` 分区 | **129 MB** | 原厂 `ri` 分区，真实硬件 MAC |
+| `nokia_xg-040g-md-ubi` | OpenWrt U-Boot | bl2 128K + ubi **255.875 MB** | 最大 | ubi 中的 `ri` 卷 |
+
+tcboot 变体的分区表、`IMAGE_SIZE`、`KERNEL_SIZE`、`UBINIZE_OPTS` 与 25.12 线的 `bell_xg-040g-md` 逐项一致，并声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，因此**可以从 25.12 固件直接 sysupgrade 过去，不必完整刷机**。
+
+`nokia_xg-040g-md`（原厂布局）是唯一保留原厂 `nsb_2` 备份 bank、`romfile`、`config` 与真实 MAC 的变体，也是唯一能刷回原厂固件的，代价是 rootfs 空间减半。切换变体见 `config/xg-040g-md-master.config` 头部说明。
+
+> ⚠️ **tcboot 与 ubi 变体会覆盖原厂 `ri` 分区（MAC 来源）。** 两者改为从 ubi 中名为 `ri` 的卷读取 MAC，该卷需用原厂 `ri` 分区的备份创建。若卷不存在，预期退化为内核随机 MAC —— 与 25.12 线现状（`99_fix-airoha-mac` 每次首启随机生成）相当。
 >
-> ⚠️ master 线默认选的是不动引导的 `nokia_xg-040g-md`。若你的机器跑的是 OpenWrt U-Boot 布局，需在 `config/xg-040g-md-master.config` 里换成 `nokia_xg-040g-md-ubi`，文件头部有说明。
+> ⚠️ **tcboot 变体尚未经实机验证。** 分区偏移、`UBINIZE_OPTS`、tcboot 能否引导其产出的 `factory.bin` 均只做了静态核对。首次刷入前接好 USB-TTL。
+>
+> ⚠️ 三个变体之间（tcboot ↔ stock ↔ ubi）分区表互不相同，**不能互相 sysupgrade**，切换必须完整刷机。
 
 此外 25.12 分支的内核配置已启用完整 IPsec/XFRM 支持。
 
