@@ -27,16 +27,24 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 **分支选择建议：`openwrt-25.12-XG-040G-MD`（默认）**
 
-| 分支 | 源码基线 | feeds | 状态 |
-| --- | --- | --- | --- |
-| `openwrt-25.12-XG-040G-MD` | 与 immortalwrt `openwrt-25.12` 同步，落后 0 | 五个 feed 全部锁定 `;openwrt-25.12` | 维护中 |
-| `master-XG-040G-MD` | 停在 2026-05-11，落后 immortalwrt `master` 1611 个提交 | 未锁定，拉取 packages/luci 最新提交 | 仅保留，未跟进上游 |
+| 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 |
+| --- | --- | --- | --- | --- |
+| `openwrt-25.12-XG-040G-MD` | immortalwrt `openwrt-25.12`，落后 0 | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` |
+| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md` | 6.18 | `config/xg-040g-md-master.config` |
 
-两个分支内核同为 6.12。25.12 分支已 rebase 到上游最新，若干原本自带的闪存补丁改由上游的 mainline 回合提供（`backport-6.12/436`、`437` 提供 FM25G01B/FM25G02B，`429-01/02/03` 提供 regular 模式重读）；SkyHigh S35ML 支持（`430`、`431`）上游至今没有，仍由本项目自带。master 分支保持 2026-05-11 的原始状态，未做同步。
+两条线各自只有 1 个设备提交叠在上游之上，跟进上游只需 rebase 一次。
+
+**25.12 线**：上游没有 XG-040G-MD 支持，设备 DTS、镜像定义与 SkyHigh S35ML 闪存补丁（`backport-6.12/430`、`431`）均由本项目自带。FM25G01B/FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供。
+
+**master 线**：上游 master 已内核 6.18 且原生支持本机型，提供 `nokia_xg-040g-md`（保留原厂引导）与 `nokia_xg-040g-md-ubi`（OpenWrt U-Boot 布局，额外产出 `preloader.bin` / `bl31-uboot.fip`）两个变体。自制的 `bell_xg-040g-md` 已弃用，闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu` 与一行 `nf_conntrack_max`。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
+
+> ⚠️ **两条线的分区布局不同，不能互相 sysupgrade。** 25.12 线 `IMAGE_SIZE` 为 261120k，master 线 stock 变体为 131968k。首次切换必须完整刷机，并接好 USB-TTL。
+>
+> ⚠️ master 线默认选的是不动引导的 `nokia_xg-040g-md`。若你的机器跑的是 OpenWrt U-Boot 布局，需在 `config/xg-040g-md-master.config` 里换成 `nokia_xg-040g-md-ubi`，文件头部有说明。
 
 此外 25.12 分支的内核配置已启用完整 IPsec/XFRM 支持。
 
-跟进上游（25.12 线）：
+跟进上游：
 
 ```bash
 git clone https://github.com/Loong1996/immortalwrt.git -b openwrt-25.12-XG-040G-MD
@@ -47,9 +55,7 @@ git rebase upstream/openwrt-25.12    # 只有 1 个设备提交要 rebase
 git push --force-with-lease
 ```
 
-补丁目录 `patch-25.12/`、`patch-master/` 保留作对照参考，实际编译不使用。
-
-> 注意：上游 `immortalwrt/immortalwrt` 的 master 已升级至内核 6.18 并移除了 `target/linux/airoha/patches-6.12/`。若尝试将 `master-XG-040G-MD` rebase 到上游最新，本项目的 airoha 补丁会被放入构建系统不再读取的目录，**不报错但设备支持会静默失效**。如需跟进上游，请使用 25.12 分支并以 merge 方式同步。
+补丁目录 `patch-25.12/` 保留作 25.12 线的对照参考，实际编译不使用。master 线已完全依赖上游，无对应补丁目录。
 
 ### 自定义软件包
 

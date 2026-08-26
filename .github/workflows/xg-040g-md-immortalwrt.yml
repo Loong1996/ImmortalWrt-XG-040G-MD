@@ -96,9 +96,13 @@ jobs:
       if: env.DRAM_SIZE != ''
       run: |
         cd $OPENWRT_PATH
-        DTS=$(ls target/linux/airoha/dts/*xg-040g-md*.dts 2>/dev/null | head -n1)
-        [ -n "$DTS" ] || { echo "::error::未找到 XG-040G-MD 的 dts"; exit 1; }
-        echo "目标 dts: $DTS"
+        # 两条线的 memory 节点位置与写法都不同：
+        #   25.12 线  dts/an7581-bell_xg-040g-md.dts，usable-memory-range 单行
+        #   master 线 dts/an758x-nokia_xg-040g-common.dtsi，该属性跨两行书写
+        # 因此按内容定位文件，并用容忍空白与换行的正则改写。
+        DTS=$(grep -rl "linux,usable-memory-range" target/linux/airoha/dts/ 2>/dev/null | grep -i "xg-040g" | head -n1)
+        [ -n "$DTS" ] || { echo "::error::未找到含 usable-memory-range 的 XG-040G dts"; exit 1; }
+        echo "目标文件: $DTS"
 
         case "$DRAM_SIZE" in
           512M) MEM_SIZE=0x20000000; USABLE_SIZE=0x1fe00000 ;;
@@ -107,19 +111,36 @@ jobs:
           *)    echo "::error::不支持的 DRAM_SIZE=$DRAM_SIZE"; exit 1 ;;
         esac
 
+        python3 - "$DTS" "$MEM_SIZE" "$USABLE_SIZE" <<'PY'
+        import re, sys
+        path, mem, usable = sys.argv[1], sys.argv[2], sys.argv[3]
+        s = open(path, encoding="utf-8").read()
         # memory 节点：DRAM 基址 0x80000000，大小改为实际颗粒容量
-        sed -i -E "s/(reg = <0x0 0x80000000 0x0 )0x[0-9a-fA-F]+(>;)/\1${MEM_SIZE}\2/" "$DTS"
+        s, n1 = re.subn(r"(reg\s*=\s*<0x0\s+0x80000000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
+                        lambda m: m.group(1) + mem + m.group(2), s)
         # chosen/linux,usable-memory-range：跳过 0x80000000 起 2MB 的 ATF 保留区
-        sed -i -E "s/(linux,usable-memory-range = <0x0 0x80200000 0x0 )0x[0-9a-fA-F]+(>;)/\1${USABLE_SIZE}\2/" "$DTS"
+        s, n2 = re.subn(r"(linux,usable-memory-range\s*=\s*<0x0\s+0x80200000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
+                        lambda m: m.group(1) + usable + m.group(2), s)
+        if n1 != 1 or n2 != 1:
+            print("::error::替换次数异常 memory=%d usable=%d（期望各 1 次）" % (n1, n2))
+            sys.exit(1)
+        open(path, "w", encoding="utf-8").write(s)
+        print("已改写 memory=%s usable=%s" % (mem, usable))
+        PY
 
         echo "--- 修改后 ---"
-        grep -nE "usable-memory-range|reg = <0x0 0x80000000" "$DTS"
-        grep -q "0x0 0x80000000 0x0 ${MEM_SIZE}>" "$DTS" || { echo "::error::memory 节点未生效"; exit 1; }
-        grep -q "0x0 0x80200000 0x0 ${USABLE_SIZE}>" "$DTS" || { echo "::error::usable-memory-range 未生效"; exit 1; }
+        grep -nE "usable-memory-range|0x80000000|0x80200000" "$DTS"
 
     - name: Generate Variables(生成变量)
       run: |
         SOURCE_REPO="$(echo $REPO_URL | awk -F '/' '{print $(NF)}')"
+        # master 线用上游原生 nokia_xg-040g-md 设备定义、内核 6.18，配置不同
+        case "$REPO_BRANCH" in
+          master-XG-040G-MD) CONFIG_FILE=config/xg-040g-md-master.config ;;
+          *)                 CONFIG_FILE=config/xg-040g-md.config ;;
+        esac
+        echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
+        echo "使用配置: $CONFIG_FILE"
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
