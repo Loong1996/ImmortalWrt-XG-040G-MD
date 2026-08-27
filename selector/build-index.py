@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """从 buildroot 的 tmp/.packageinfo 导出选包页用的软件包索引。
 
-.packageinfo 是 include/scan.mk 扫描全部 feeds 后生成的元数据缓存，
-在 make defconfig 时产生，内容形如：
+.packageinfo 是 include/scan.mk 扫描全部 feeds 后生成的元数据缓存，在
+make defconfig 阶段产生 —— 不需要编译任何东西。内容形如：
 
     Source-Makefile: package/network/services/dnsmasq/Makefile
     Package: dnsmasq
     Submenu: IP Addresses and Names
+    Version: 2.90-r1
+    Depends: +libc +SSP_SUPPORT:libssp
     Category: Base system
-    Section: net
     Title: DNS and DHCP server
-    Description: ...
+    License: GPL-2.0
+    URL: https://thekelleys.org.uk/dnsmasq/
     @@
 
 用它而不是官方 apk 索引，是因为只有它反映"这条源码分支实际能编出哪些包"，
-自建的 luci-app-airoha-npu 之类也在里面。
+自建的 luci-app-airoha-npu 之类也在里面；官方索引则只有包名和版本两项。
 
 用法：
     build-index.py <.packageinfo> <编译后的.config> <源配置文件> <分支> <标签> <输出.json> [附加包]
@@ -22,15 +24,27 @@
 末位的「附加包」是本次构建经 extra_packages 临时加进去的包名（空格分隔），
 不传则取环境变量 EXTRA_ADD。这些包只在这一次编译里存在，不能算进"已含"。
 
-除主索引外还会在同目录写一份依赖表，文件名把 packages- 换成 deps-。
-拆成两个文件是有意的：主索引一万三千个包已经一兆多，而绝大多数人只是
-搜个包名勾上就走，不看依赖，没道理让所有人先把依赖表也下载下来。
+产物是两个文件：
+
+    packages-<分支>.json   列表与搜索要用的：名字、描述、分类、版本、选中状态
+    detail-<分支>.json     点开某个包才要的：依赖、冲突、许可证、上游地址
+
+拆开是有意的。主索引一万三千个包已经一兆多，而绝大多数人只是搜个包名勾
+上就走，没道理让所有人把详情也一并下载。详情文件里的数组与主索引的
+packages 数组按下标一一对应。
 """
 import io
 import json
 import os
 import re
 import sys
+
+# .packageinfo 认得的字段远不止这些（完整清单见 scripts/metadata.pm），这
+# 里只取选包页真正用得上的。Maintainer、CPE-ID、ABI-Version、Build-* 之类
+# 属于构建系统内部信息；Description 则因为一万三千个包摊下来要好几 MB 而
+# 放弃 —— Title 已经是一句话摘要，想看细节点 URL 去上游更直接。
+WANTED = ('Package', 'Title', 'Category', 'Submenu', 'Version',
+          'License', 'URL', 'Depends', 'Provides', 'Conflicts', 'Hidden')
 
 
 def parse_depends(val):
@@ -57,8 +71,14 @@ def parse_depends(val):
     return plain, cond
 
 
+def new_pkg(name):
+    return {'n': name, 't': '', 'c': '', 's': '', 'v': '',
+            '_lic': '', '_url': '', '_dep': [], '_cond': [],
+            '_prov': [], '_conf': [], '_hidden': False}
+
+
 def parse_packageinfo(path):
-    """返回 {名字: {n, t, c, s, _dep, _cond, _prov}}，同名包保留首次出现的定义。"""
+    """返回 {名字: 包信息}。同名包可能被多个 Makefile 定义（不同 feed），取先扫到的。"""
     pkgs = {}
     cur = None
     with io.open(path, encoding='utf-8', errors='replace') as f:
@@ -71,11 +91,10 @@ def parse_packageinfo(path):
             if not m:
                 continue
             key, val = m.group(1), m.group(2).strip()
+            if key not in WANTED:
+                continue
             if key == 'Package':
-                cur = {'n': val, 't': '', 'c': '', 's': '',
-                       '_dep': [], '_cond': [], '_prov': []}
-                # 同名包可能被多个 Makefile 定义（如不同 feed），以先扫到的为准
-                pkgs.setdefault(val, cur)
+                pkgs.setdefault(val, new_pkg(val))
                 cur = pkgs[val]
             elif cur is None:
                 continue
@@ -85,10 +104,20 @@ def parse_packageinfo(path):
                 cur['c'] = val
             elif key == 'Submenu' and not cur['s']:
                 cur['s'] = val
+            elif key == 'Version' and not cur['v']:
+                cur['v'] = val
+            elif key == 'License' and not cur['_lic']:
+                cur['_lic'] = val
+            elif key == 'URL' and not cur['_url']:
+                cur['_url'] = val
             elif key == 'Depends' and not cur['_dep'] and not cur['_cond']:
                 cur['_dep'], cur['_cond'] = parse_depends(val)
             elif key == 'Provides' and not cur['_prov']:
                 cur['_prov'] = val.split()
+            elif key == 'Conflicts' and not cur['_conf']:
+                cur['_conf'] = val.split()
+            elif key == 'Hidden':
+                cur['_hidden'] = True
     return pkgs
 
 
@@ -108,15 +137,20 @@ def selected_packages(path):
     return sel
 
 
-def write_deps(out, branch, tag, ordered):
-    """写依赖表，文件名把主索引的 packages- 换成 deps-，返回路径。
+def write_detail(out, branch, tag, ordered):
+    """写详情文件，文件名把主索引的 packages- 换成 detail-，返回路径。
 
-    依赖用「在 ordered 里的下标」而不是包名来存：包名在依赖关系里重复度
-    极高，存下标能省掉一大半体积，前端算反向依赖也只要遍历一遍。解析不
-    到对应包的（虚拟包、内核符号等）原样存字符串，前端按类型区分即可。
+    依赖与冲突用「在 ordered 里的下标」而不是包名来存：包名在这些关系里
+    重复度极高，存下标能省掉一大半体积，前端算反向依赖也只要遍历一遍。
+    解析不到对应包的（虚拟包、内核符号等）原样存字符串，前端按类型区分。
 
-    d[i] 是第 i 个包的无条件依赖，k[i] 是条件依赖，每项为 [条件, 目标]。
-    两个数组与主索引的 packages 数组按下标一一对应。
+    数组含义，均与主索引的 packages 数组按下标一一对应：
+        d  无条件依赖
+        k  条件依赖，每项为 [条件, 目标]
+        x  冲突包
+        l  许可证在 lic 字典里的下标，-1 表示没写
+        u  上游地址，没有则空串
+    许可证抽成字典是因为一万多个包翻来覆去就那几十种，直接存字符串纯属浪费。
     """
     idx = {p['n']: i for i, p in enumerate(ordered)}
     # Provides 声明的虚拟名也能当依赖目标，指向第一个提供者
@@ -127,24 +161,42 @@ def write_deps(out, branch, tag, ordered):
     def ref(name):
         return idx[name] if name in idx else name
 
-    d = [[ref(x) for x in p['_dep']] for p in ordered]
-    k = [[[c, ref(x)] for c, x in p['_cond']] for p in ordered]
+    lic_list, lic_idx = [], {}
+
+    def lic(name):
+        if not name:
+            return -1
+        if name not in lic_idx:
+            lic_idx[name] = len(lic_list)
+            lic_list.append(name)
+        return lic_idx[name]
+
+    data = {
+        'branch': branch, 'tag': tag, 'count': len(ordered),
+        'lic': lic_list,
+        'd': [[ref(x) for x in p['_dep']] for p in ordered],
+        'k': [[[c, ref(x)] for c, x in p['_cond']] for p in ordered],
+        'x': [[ref(x) for x in p['_conf']] for p in ordered],
+        'l': [lic(p['_lic']) for p in ordered],
+        'u': [p['_url'] for p in ordered],
+    }
 
     base = os.path.basename(out)
-    dep_out = os.path.join(os.path.dirname(out) or '.',
-                           ('deps-' + base[len('packages-'):])
-                           if base.startswith('packages-') else 'deps-' + base)
-    os.makedirs(os.path.dirname(dep_out) or '.', exist_ok=True)
-    with io.open(dep_out, 'w', encoding='utf-8') as f:
-        json.dump({'branch': branch, 'tag': tag, 'count': len(ordered),
-                   'd': d, 'k': k},
-                  f, ensure_ascii=False, separators=(',', ':'))
-    nd = sum(len(x) for x in d)
-    nk = sum(len(x) for x in k)
-    unresolved = len({x for row in d for x in row if isinstance(x, str)})
-    print('依赖表：无条件 %d 条，条件 %d 条，未解析目标 %d 个'
-          % (nd, nk, unresolved))
-    return dep_out
+    name = ('detail-' + base[len('packages-'):]) if base.startswith('packages-') \
+        else 'detail-' + base
+    dest = os.path.join(os.path.dirname(out) or '.', name)
+    os.makedirs(os.path.dirname(dest) or '.', exist_ok=True)
+    with io.open(dest, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, separators=(',', ':'))
+
+    nd = sum(len(x) for x in data['d'])
+    nk = sum(len(x) for x in data['k'])
+    nx = sum(len(x) for x in data['x'])
+    unresolved = len({x for row in data['d'] for x in row if isinstance(x, str)})
+    nu = sum(1 for u in data['u'] if u)
+    print('详情：依赖 %d 条（其中条件 %d、未解析目标 %d 个），冲突 %d 条，'
+          '许可证 %d 种，上游地址 %d 个' % (nd, nk, unresolved, nx, len(lic_list), nu))
+    return dest
 
 
 def main():
@@ -159,6 +211,15 @@ def main():
     if not pkgs:
         sys.stderr.write('::error::%s 里没解析出任何软件包\n' % pkginfo)
         return 1
+
+    # HIDDEN:=1 的包在 menuconfig 里没有选项条目，kconfig 没法把它直接设成
+    # y，只能被别的包 select。列进选包页是有害的：勾了写进 extra_packages
+    # 之后 defconfig 会静默丢掉那一行，构建流程的核对步骤会把整次构建判失败。
+    hidden = [n for n, p in pkgs.items() if p['_hidden']]
+    for n in hidden:
+        del pkgs[n]
+    if hidden:
+        print('剔除 %d 个 HIDDEN 包（menuconfig 里不可选，选了也不会生效）' % len(hidden))
 
     explicit = selected_packages(src_cfg)   # 配置文件里显式勾选的
     built = selected_packages(final_cfg)    # defconfig 补全依赖后实际编入的
@@ -177,7 +238,7 @@ def main():
     # 之类的虚拟项），不补进列表，避免页面生成出编不出来的包名
 
     ordered = sorted(pkgs.values(), key=lambda p: p['n'])
-    dep_out = write_deps(out, branch, tag, ordered)
+    detail_out = write_detail(out, branch, tag, ordered)
 
     data = {
         'branch': branch,
@@ -193,7 +254,7 @@ def main():
     n2 = sum(1 for p in ordered if p.get('sel') == 2)
     n1 = sum(1 for p in ordered if p.get('sel') == 1)
     print('%s: %d 个包，显式勾选 %d，依赖带入 %d' % (branch, len(ordered), n2, n1))
-    for f in (out, dep_out):
+    for f in (out, detail_out):
         print('  写入 %s (%.0f KB)' % (f, os.path.getsize(f) / 1024.0))
     return 0
 

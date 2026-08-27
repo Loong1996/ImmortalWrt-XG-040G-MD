@@ -1,0 +1,174 @@
+name: 更新选包页索引
+
+# 生成选包页索引根本不需要编译。tmp/.packageinfo 是 include/scan.mk 在
+# make defconfig 阶段扫描全部 feeds 产生的，那时候一行代码都还没编。之所
+# 以以前要等两个多小时，纯粹是因为这一步被夹在完整构建流程里。
+#
+# 单拎出来跑十分钟就够：初始化环境 + 克隆源码 + feeds + defconfig。
+# 改了 selector/ 下的东西想看效果，或者 feeds 更新了想刷新清单，都用它。
+run-name: "更新选包页索引 · ${{ inputs.repo_branch }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo_branch:
+        description: '要生成索引的分支'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - both
+          - openwrt-25.12-XG-040G-MD
+          - master-XG-040G-MD
+      device_variant:
+        description: '设备变体（仅 master 分支有效）'
+        required: true
+        default: 'tcboot'
+        type: choice
+        options:
+          - tcboot
+          - stock
+          - ubi
+
+env:
+  REPO_URL: https://github.com/Loong1996/immortalwrt.git
+  TZ: Asia/Shanghai
+
+jobs:
+  Index:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      # 两条线互不相干，一条挂了另一条照样出索引
+      fail-fast: false
+      # 并发推 gh-pages 会撞车，交给发布步骤里的重试逻辑处理
+      matrix:
+        branch: ${{ fromJSON(inputs.repo_branch == 'both'
+          && '["openwrt-25.12-XG-040G-MD","master-XG-040G-MD"]'
+          || format('["{0}"]', inputs.repo_branch)) }}
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+
+    - name: Initialization Environment(初始化环境)
+      env:
+        DEBIAN_FRONTEND: noninteractive
+      run: |
+        sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+
+    - name: Clone Source Code(克隆源代码)
+      run: |
+        # 只要元数据，不需要历史
+        git clone --depth 1 "$REPO_URL" -b "${{ matrix.branch }}" openwrt
+        cd openwrt
+        echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
+        echo "SRC_INFO=$(git show -s --format='%h %s')" >> $GITHUB_ENV
+
+    - name: Generate Variables(生成变量)
+      run: |
+        # 与构建流程保持一致：只有 master 线是显式匹配，其余落进 25.12 的默认
+        case "${{ matrix.branch }}" in
+          master-XG-040G-MD)
+            CONFIG_FILE=config/xg-040g-md-master.config
+            case "${{ inputs.device_variant }}" in
+              tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
+              stock)  DEVICE_SYMBOL=nokia_xg-040g-md ;;
+              ubi)    DEVICE_SYMBOL=nokia_xg-040g-md-ubi ;;
+              *)      echo "::error::不支持的 device_variant"; exit 1 ;;
+            esac
+            ;;
+          *)
+            CONFIG_FILE=config/xg-040g-md.config
+            DEVICE_SYMBOL=bell_xg-040g-md
+            ;;
+        esac
+        echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
+        echo "DEVICE_SYMBOL=$DEVICE_SYMBOL" >> $GITHUB_ENV
+        echo "INDEX_TAG=索引 $(date +%Y-%m-%d) #${{ github.run_number }}" >> $GITHUB_ENV
+        echo "使用配置: $CONFIG_FILE    设备: $DEVICE_SYMBOL"
+
+    - name: Install Feeds(安装feeds)
+      run: |
+        cd $OPENWRT_PATH
+        ./scripts/feeds update -a
+        ./scripts/feeds install -a
+
+    - name: Run defconfig(生成元数据)
+      run: |
+        cp "$GITHUB_WORKSPACE/$CONFIG_FILE" $OPENWRT_PATH/.config
+        cd $OPENWRT_PATH
+        # 设备符号影响 defconfig 补全出来的包集合，也就是索引里"依赖带入"
+        # 那一档。不设对设备，那一档就是错的。
+        sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+        sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+        sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+        # 这一步只读元数据、不编译，是整个流程里最慢的一环（几分钟）
+        make defconfig
+        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+          || { echo "::error::defconfig 后设备符号丢失: $DEVICE_SYMBOL"; exit 1; }
+        [ -s tmp/.packageinfo ] || { echo "::error::未生成 tmp/.packageinfo"; exit 1; }
+        echo "元数据条目数: $(grep -c '^Package: ' tmp/.packageinfo)"
+
+    - name: Build Index(生成索引)
+      run: |
+        PAGES="$RUNNER_TEMP/pages"
+        mkdir -p "$PAGES"
+        python3 "$GITHUB_WORKSPACE/selector/build-index.py" \
+          "$OPENWRT_PATH/tmp/.packageinfo" \
+          "$OPENWRT_PATH/.config" \
+          "$GITHUB_WORKSPACE/$CONFIG_FILE" \
+          "${{ matrix.branch }}" "$INDEX_TAG ($SRC_INFO)" \
+          "$PAGES/packages-${{ matrix.branch }}.json"
+
+    - name: Publish To Pages(发布到选包页)
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        PAGES="$RUNNER_TEMP/pages"
+        GH="$RUNNER_TEMP/gh"
+        REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
+        if git clone --depth 1 --branch gh-pages "$REMOTE" "$GH"; then
+          echo "已有 gh-pages 分支"
+        else
+          echo "gh-pages 不存在，新建"
+          git init -b gh-pages "$GH"
+          git -C "$GH" remote add origin "$REMOTE"
+        fi
+        cd "$GH"
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+        # 只覆盖本次产出的文件，另一条线的索引原样留着
+        stage() {
+          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/index.html"
+          cp "$PAGES"/*.json "$GH/"
+          touch "$GH/.nojekyll"
+          git add -A
+        }
+
+        # 两条线同时跑时后推的那个会被拒。浅克隆上 rebase 不可靠，
+        # 改为丢掉本地提交、取回最新的 gh-pages，再把本次文件重新叠上去。
+        for try in 1 2 3; do
+          stage
+          if git diff --cached --quiet; then
+            echo "选包页无变化，跳过提交"
+            exit 0
+          fi
+          git commit -m "选包页：更新 ${{ matrix.branch }} 索引（$INDEX_TAG）"
+          if git push origin gh-pages; then
+            break
+          fi
+          if [ "$try" = 3 ]; then
+            echo "::error::推送 gh-pages 连续三次失败"
+            exit 1
+          fi
+          echo "推送被拒，多半是另一条线先提交了，取最新重来"
+          git fetch --depth 1 origin gh-pages
+          git reset --hard FETCH_HEAD
+        done
+        OWNER=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f1 | tr 'A-Z' 'a-z')
+        NAME=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)
+        echo "选包页已更新：https://$OWNER.github.io/$NAME/"
