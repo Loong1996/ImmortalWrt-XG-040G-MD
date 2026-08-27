@@ -48,6 +48,21 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .row .name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
 .row .t{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .badge{font-size:11px;padding:0 6px;border-radius:10px;background:var(--chip);color:var(--dim);white-space:nowrap}
+.info{border:0;background:none;color:var(--dim);cursor:pointer;padding:0 4px;
+  font:inherit;line-height:1;border-radius:4px}
+.info:hover{color:var(--accent);background:var(--chip)}
+.detail{padding:8px 12px 12px 28px;background:var(--chip);
+  border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:13px}
+.detail h4{margin:8px 0 4px;font-size:12px;color:var(--dim);font-weight:600}
+.detail h4:first-child{margin-top:0}
+.detail .list{display:flex;flex-wrap:wrap;gap:4px 8px}
+.pill{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;
+  padding:1px 6px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
+button.pill{cursor:pointer;color:var(--accent)}
+button.pill:hover{border-color:var(--accent)}
+.pill.raw{color:var(--dim);border-style:dashed}
+.pill .cond{color:var(--warn)}
+.note{color:var(--dim);font-size:12px;margin:4px 0 0}
 .empty{padding:24px 12px;text-align:center;color:var(--dim);line-height:1.8}
 .out{position:fixed;left:0;right:0;bottom:0;background:var(--panel);
   border-top:1px solid var(--line);padding:10px 16px}
@@ -65,7 +80,7 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
   <h1>XG-040G-MD 选包</h1>
   <p class="sub">勾选想要的软件包，把底部生成的字符串粘进
     <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/actions" target="_blank" rel="noopener">Actions</a>
-    里 <code>附加软件包</code> 那一栏，再跑一次构建即可。</p>
+    里 <code>附加软件包</code> 那一栏，再跑一次构建即可。点每行右侧的 <b>ⓘ</b> 看依赖关系。</p>
 
   <div class="bar">
     <select id="src"></select>
@@ -94,12 +109,12 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
 // 两种数据源：
 //
 // 编译索引 —— 每次构建成功后由 workflow 从源码树的 tmp/.packageinfo 导出，
-//   带描述与分类、含自建包、保证这条分支编得出来。是首选。
+//   带描述、分类与依赖关系，含自建包，且保证这条分支编得出来。是首选。
 //
 // 官方索引 —— immortalwrt 下载站的 index.json，静态页可直接跨域取（对方开了
-//   CORS）。好处是不用等构建就能用；代价是只有包名和版本，没有描述与分类，
-//   也不含 kmod（在 targets/*/kmods/ 下，目录名带内核版本）和本仓库自建包。
-//   编译索引取不到时自动回落到它，也可以在下拉框里手动选。
+//   CORS）。好处是不用等构建就能用；代价是只有包名和版本，没有描述、分类和
+//   依赖，也不含 kmod（在 targets/*/kmods/ 下，目录名带内核版本）和本仓库
+//   自建包。编译索引取不到时自动回落到它，也可以在下拉框里手动选。
 var OFFICIAL_PREFIX = "official:";
 var FEEDS = ["base", "luci", "packages", "routing", "telephony"];
 var OFFICIAL = {
@@ -116,9 +131,12 @@ var OPTIONS = [
   { v: OFFICIAL_PREFIX + "master-XG-040G-MD", t: "官方索引 · snapshots（无描述）" }
 ];
 var MAX_FLAT = 400;   // 搜索结果一次最多渲染多少条，防止上千 DOM 拖垮手机
+var MAX_REV = 40;     // 反向依赖最多列几个（libc 这种会有上千个）
 
 var pkgs = [], byName = {}, changes = {};
 var source = OPTIONS[0].v, branch = OPTIONS[0].v, officialMode = false, onlyChanged = false;
+// 依赖表按需加载：主索引一万三千个包已经一兆多，多数人搜个名字勾上就走
+var deps = null, depsState = "none", rev = null, expanded = null, showClosure = false;
 
 function $(id) { return document.getElementById(id); }
 
@@ -179,7 +197,162 @@ function el(tag, cls, text) {
   return e;
 }
 
+/* ---------- 依赖表 ---------- */
+
+function loadDeps() {
+  if (depsState === "loading" || depsState === "ready") return;
+  depsState = "loading";
+  render();
+  fetch("deps-" + branch + ".json", { cache: "no-cache" })
+    .then(function (r) {
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return r.json();
+    })
+    .then(function (d) {
+      if (!d.d || d.d.length !== pkgs.length) {
+        throw new Error("依赖表与索引长度不一致");
+      }
+      deps = d;
+      // 反向依赖前端算：遍历一遍就有，没必要让构建端再存一份
+      rev = [];
+      d.d.forEach(function (row, i) {
+        row.forEach(function (x) {
+          if (typeof x !== "number") return;
+          (rev[x] = rev[x] || []).push(i);
+        });
+      });
+      depsState = "ready";
+      render();
+    })
+    .catch(function (e) {
+      deps = null;
+      depsState = "error:" + e.message;
+      render();
+    });
+}
+
+// 无条件依赖的传递闭包，不含自己。条件依赖不计入 —— 它们要不要装取决于
+// 别的配置开关，算进来会虚报。
+function closure(start) {
+  var seen = {}, queue = [start], out = [];
+  seen[start] = true;
+  while (queue.length) {
+    var cur = queue.shift();
+    (deps.d[cur] || []).forEach(function (x) {
+      if (typeof x !== "number" || seen[x]) return;
+      seen[x] = true;
+      out.push(x);
+      queue.push(x);
+    });
+  }
+  return out;
+}
+
+function jumpTo(name) {
+  $("q").value = name;
+  onlyChanged = false;
+  expanded = name;
+  showClosure = false;
+  render();
+}
+
+// 依赖目标可能是解析不到的虚拟包或内核符号，那种存的是字符串，不可点
+function refPill(x, cond) {
+  var known = typeof x === "number";
+  var name = known ? pkgs[x].n : x;
+  var e = known ? el("button", "pill") : el("span", "pill raw");
+  if (cond) {
+    e.appendChild(el("span", "cond", cond + " ? "));
+    e.appendChild(document.createTextNode(name));
+  } else {
+    e.textContent = name;
+  }
+  if (known) {
+    e.title = pkgs[x].t || name;
+    e.addEventListener("click", function () { jumpTo(name); });
+  } else {
+    e.title = "非软件包（虚拟包或内核符号），索引里没有对应条目";
+  }
+  return e;
+}
+
+function detailFor(p) {
+  var box = el("div", "detail");
+  if (officialMode) {
+    box.appendChild(el("p", "note",
+      "官方索引只有包名和版本，不含依赖信息。切换到编译索引可以看依赖关系。"));
+    return box;
+  }
+  if (depsState === "loading") {
+    box.appendChild(el("p", "note", "正在加载依赖表…"));
+    return box;
+  }
+  if (depsState.indexOf("error:") === 0) {
+    box.appendChild(el("p", "note",
+      "取不到 deps-" + branch + ".json（" + depsState.slice(6) +
+      "）。这条线的索引可能是加入依赖功能之前生成的，重新构建一次即可。"));
+    return box;
+  }
+  if (depsState !== "ready") {
+    box.appendChild(el("p", "note", "依赖表未加载"));
+    return box;
+  }
+
+  var i = p.i;
+  var d = deps.d[i] || [], k = deps.k[i] || [], r = rev[i] || [];
+
+  box.appendChild(el("h4", null, "依赖（" + d.length + "）"));
+  if (!d.length) {
+    box.appendChild(el("p", "note", "没有无条件依赖"));
+  } else {
+    var dl = el("div", "list");
+    d.forEach(function (x) { dl.appendChild(refPill(x, null)); });
+    box.appendChild(dl);
+    var btn = el("button", "pill",
+      showClosure ? "收起传递闭包" : "展开传递闭包（含间接依赖）");
+    btn.addEventListener("click", function () { showClosure = !showClosure; render(); });
+    var wrap = el("div", "list");
+    wrap.style.marginTop = "6px";
+    wrap.appendChild(btn);
+    box.appendChild(wrap);
+    if (showClosure) {
+      var cl = closure(i);
+      box.appendChild(el("h4", null, "勾上它总共会带进 " + cl.length + " 个包"));
+      var cld = el("div", "list");
+      cl.sort(function (a, b) { return pkgs[a].n < pkgs[b].n ? -1 : 1; });
+      cl.forEach(function (x) { cld.appendChild(refPill(x, null)); });
+      box.appendChild(cld);
+    }
+  }
+
+  if (k.length) {
+    box.appendChild(el("h4", null, "条件依赖（" + k.length + "）"));
+    var kl = el("div", "list");
+    k.forEach(function (pair) { kl.appendChild(refPill(pair[1], pair[0])); });
+    box.appendChild(kl);
+    box.appendChild(el("p", "note", "只有对应配置项打开时才会装，未计入上面的传递闭包"));
+  }
+
+  box.appendChild(el("h4", null, "被依赖（" + r.length + "）"));
+  if (!r.length) {
+    box.appendChild(el("p", "note", "没有别的软件包依赖它，可以放心移除"));
+  } else {
+    var rl = el("div", "list");
+    r.slice(0, MAX_REV).forEach(function (x) { rl.appendChild(refPill(x, null)); });
+    box.appendChild(rl);
+    if (r.length > MAX_REV) {
+      box.appendChild(el("p", "note", "另有 " + (r.length - MAX_REV) + " 个未列出"));
+    }
+    box.appendChild(el("p", "note",
+      "这些包里只要有一个被选中，本包就移除不掉 —— 构建时会给出 warning 并照常编进固件"));
+  }
+  return box;
+}
+
+/* ---------- 列表 ---------- */
+
 function rowFor(p) {
+  var item = el("div", "item");
   var row = el("div", "row");
   var lab = el("label");
   var cb = document.createElement("input");
@@ -198,7 +371,23 @@ function rowFor(p) {
     b.style.color = changes[p.n] === "add" ? "var(--add)" : "var(--del)";
     row.appendChild(b);
   }
-  return row;
+  var info = el("button", "info", "ⓘ");
+  info.title = "查看依赖关系";
+  info.setAttribute("aria-label", "查看 " + p.n + " 的依赖关系");
+  info.addEventListener("click", function () {
+    if (expanded === p.n) {
+      expanded = null;
+    } else {
+      expanded = p.n;
+      showClosure = false;
+      if (!officialMode && depsState === "none") loadDeps();
+    }
+    render();
+  });
+  row.appendChild(info);
+  item.appendChild(row);
+  if (expanded === p.n) item.appendChild(detailFor(p));
+  return item;
 }
 
 function matches(p, q) {
@@ -230,9 +419,12 @@ function renderTree(list, pool) {
     sm.appendChild(el("span", null, c));
     sm.appendChild(el("span", "n", "(" + cats[c].length + ")"));
     d.appendChild(sm);
+    // 展开中的包所在的分组要保持打开，否则点了依赖跳转过来会看不见
+    var hasExpanded = expanded && cats[c].some(function (p) { return p.n === expanded; });
+    if (hasExpanded) d.open = true;
     var filled = false;
-    d.addEventListener("toggle", function () {
-      if (!d.open || filled) return;
+    var fill = function () {
+      if (filled) return;
       filled = true;
       var subs = {}, so = [];
       cats[c].forEach(function (p) {
@@ -245,7 +437,9 @@ function renderTree(list, pool) {
         if (s) d.appendChild(el("div", "sub2", s));
         subs[s].forEach(function (p) { d.appendChild(rowFor(p)); });
       });
-    });
+    };
+    d.addEventListener("toggle", function () { if (d.open) fill(); });
+    if (hasExpanded) fill();
     list.appendChild(d);
   });
 }
@@ -286,6 +480,8 @@ function render() {
   $("only").textContent = onlyChanged ? "看全部" : "仅看改动";
 }
 
+/* ---------- 数据源 ---------- */
+
 function setStatus(text, cls) {
   var s = $("status");
   s.className = "meta" + (cls ? " " + cls : "");
@@ -295,11 +491,21 @@ function setStatus(text, cls) {
 function apply(list, official, text, cls) {
   pkgs = list;
   byName = {};
-  pkgs.forEach(function (p) { byName[p.n] = p; });
+  pkgs.forEach(function (p, i) { p.i = i; byName[p.n] = p; });
   officialMode = official;
   setStatus(text, cls);
   loadChanges();
   render();
+}
+
+function resetData() {
+  pkgs = [];
+  byName = {};
+  deps = null;
+  rev = null;
+  depsState = "none";
+  expanded = null;
+  showClosure = false;
 }
 
 function loadOfficial(fallbackReason) {
@@ -334,8 +540,8 @@ function loadOfficial(fallbackReason) {
     }
     list.sort(function (a, b) { return a.n < b.n ? -1 : (a.n > b.n ? 1 : 0); });
     var msg = (fallbackReason ? fallbackReason + " 已回落到官方索引：" : "immortalwrt 官方索引：") +
-      "共 " + list.length + " 个包名。官方索引没有描述与分类，也不含 kmod 和本仓库自建包，" +
-      "更不保证这条源码树都编得出来 —— 真编不出来的，workflow 会在编译前就报错拦下。";
+      "共 " + list.length + " 个包名。官方索引没有描述、分类与依赖信息，也不含 kmod " +
+      "和本仓库自建包，更不保证这条源码树都编得出来 —— 真编不出来的，workflow 会在编译前就报错拦下。";
     if (failed.length) msg += " 另有 " + failed.length + " 个 feed 取失败：" + failed.join("、") + "。";
     apply(list, true, msg, "warn");
   });
@@ -352,7 +558,7 @@ function loadBuilt() {
       var list = d.packages || [];
       var base = list.filter(function (p) { return p.sel === 2; }).length;
       apply(list, false, "共 " + list.length + " 个可选软件包 · 索引来自构建 " +
-        (d.tag || "未知") + " · 基础配置已含 " + base + " 个");
+        (d.tag || "未知") + " · 基础配置已含 " + base + " 个 · 点行尾 ⓘ 看依赖");
     })
     .catch(function (e) {
       loadOfficial("取不到 " + branch + " 的编译索引（" + e.message + "），这条线可能还没跑过构建。");
@@ -362,8 +568,7 @@ function loadBuilt() {
 function load() {
   var official = source.indexOf(OFFICIAL_PREFIX) === 0;
   branch = official ? source.slice(OFFICIAL_PREFIX.length) : source;
-  pkgs = [];
-  byName = {};
+  resetData();
   $("list").textContent = "";
   if (official) loadOfficial(null);
   else loadBuilt();
@@ -385,8 +590,12 @@ $("src").addEventListener("change", function () {
   onlyChanged = false;
   load();
 });
-$("q").addEventListener("input", render);
-$("only").addEventListener("click", function () { onlyChanged = !onlyChanged; render(); });
+$("q").addEventListener("input", function () { expanded = null; render(); });
+$("only").addEventListener("click", function () {
+  onlyChanged = !onlyChanged;
+  expanded = null;
+  render();
+});
 $("reset").addEventListener("click", function () {
   if (!Object.keys(changes).length) return;
   changes = {};
