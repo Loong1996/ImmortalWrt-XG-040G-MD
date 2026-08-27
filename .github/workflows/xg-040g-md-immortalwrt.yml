@@ -15,9 +15,6 @@ on:
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
-          # 临时验证分支：补了上游 25.12 缺失的 phylink 多 PCS 补丁（770-01..07），
-          # 用于确认 airoha 能否编过。验证通过后合回 openwrt-25.12-XG-040G-MD 并删除本项
-          - openwrt-25.12-XG-040G-MD-pcsfix
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
         required: true
