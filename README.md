@@ -44,7 +44,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |
-| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，自动初始化 | 否 |
+| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
 | `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，**需自行转存** | 否 |
 | （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
@@ -62,9 +62,10 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 * **前提**：机器已刷入 [Nwrt 提供的 `tcboot.bin`](https://nwrt.kuroneko.host/flashdocs/XG-040G-MD.html)
 * 刷机用附件 `factory.bin`，日常升级用 `sysupgrade.bin`
 * 原厂分区表整片被覆盖 —— `romfile`、`nsb_1`/`nsb_2`、`bosa`、`ri`、`config`、`data` 全部消失
-* MAC 取自 ubi 中名为 `ri` 的卷。`factory.bin` 会预留一个全零的 `ri` 占位卷，首次启动时固件自动把本次的 MAC 写进去，此后每次启动都是同一个值 —— **不需要原厂备份也能正常工作**
-* 有原厂 `ri` 备份的，刷完后用 `ubiupdatevol` 写入即可得到真实硬件 MAC；`sysupgrade` 只重建 `kernel` / `rootfs` / `rootfs_data` 三个卷，不会覆盖 `ri`
-* 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`。但 **25.12 线的 ubi 里没有 `ri` 卷，直接 sysupgrade 过来会因缺卷而无网络**，必须刷一次 `factory.bin`（见下方升级表）
+* MAC 取自 ubi 中名为 `ri` 的卷，但**该卷不存在时会退化为随机 MAC，不影响启动**。这一步由 `preinit` 钩子在用户态完成，不是 dts 里的 nvmem —— 后者在缺卷时会让网络驱动永久停在 deferred probe，整机失联
+* 因此**什么时候补上 `ri` 卷都可以**：`ubimkvol` + `ubiupdatevol` 写入后重启即生效，不需要重刷固件
+* 没有 `ri` 卷时随机生成的 MAC 会固化在 `/etc/xg-040g-md-mac`，重启与 `sysupgrade` 后保持不变；恢复出厂设置会重新生成
+* 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，**可从 25.12 固件直接 sysupgrade 过来**
 
 #### `stock` —— 寄生原厂分区，唯一可回退
 
@@ -112,7 +113,7 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 
 | 从 → 到 | 可否 |
 | --- | --- |
-| 25.12 `bell` → master `tcboot` | 分区表一致，`sysupgrade` 能刷进去，但 **25.12 的 ubi 没有 `ri` 卷，刷完会无网络**。需改刷一次 `factory.bin`，之后即可正常 `sysupgrade` |
+| 25.12 `bell` → master `tcboot` | **可以直接 sysupgrade**（分区表一致 + `SUPPORTED_DEVICES`） |
 | `tcboot` ↔ `stock` | 不可以，分区表完全不同，需完整刷机 |
 | `tcboot` ↔ `ubi` | 不可以，引导程序不同，需完整刷机 |
 | `stock` ↔ `ubi` | 不可以，需完整刷机 |
