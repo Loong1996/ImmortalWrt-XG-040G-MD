@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        description: '选择编译分支（25.12 线目前编得过但刷上去无网络，见 README）'
+        description: '选择编译分支（master 跟进上游、内核 6.18；25.12 为固定快照、内核 6.12）'
         required: true
         default: 'master-XG-040G-MD'
         type: choice

@@ -6,7 +6,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ### 项目说明
 
-* 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)，设备支持压缩为单个提交叠在上游之上，便于持续跟进。设备补丁最初来自 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt)。
+* 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)。master 线的设备支持压缩为单个提交叠在上游之上，便于持续跟进；25.12 线直接采用 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt) 的实测快照，不跟进上游（原因见下方分支说明）。
 * 闪存适配（SkyHigh S35ML02G300 与 Fudan Micro FM25G02B）：25.12 线的 SkyHigh 支持仍由本项目自带（`backport-6.12/430`、`431`，源自 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt)），FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供；master 线两者均由上游 6.18 承担。
 * 基于 [XG-040G-MD (AN7581) NPU 固件加载报错分析与修复记录](https://github.com/xiangtailiang/OpenWrt-for-XG-040G-MD/blob/main/docs/npu-firmware-load.md) 修复内核日志报错：
     ```text
@@ -30,20 +30,22 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-tcboot` | 6.18 | `config/xg-040g-md-master.config` | ✅ 已实机验证 |
-| `openwrt-25.12-XG-040G-MD` | immortalwrt `openwrt-25.12`，落后 0 | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` | ⚠️ 编得过，但刷上去无网络 |
+| `openwrt-25.12-XG-040G-MD` | fzs209 的实测快照，**不跟进上游** | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` | ✅ 实测可用 |
 
-两条线各自只有 1~2 个提交叠在上游之上，跟进上游只需 rebase 一次。
+master 线只有一个提交叠在上游之上，跟进上游只需 rebase 一次。
 
-**25.12 线**：上游没有 XG-040G-MD 支持，设备 DTS、镜像定义与 SkyHigh S35ML 闪存补丁（`backport-6.12/430`、`431`）均由本项目自带。FM25G01B/FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供。
+**25.12 线**：上游没有 XG-040G-MD 支持，设备 DTS、镜像定义、闪存补丁与 `luci-app-airoha-npu` 全部由 fzs209 的快照自带。
 
-> ⚠️ **25.12 线目前编得过但刷上去没有网络，暂不建议使用。** 这是上游 immortalwrt `openwrt-25.12` 自身的问题，不是本项目引入的：该分支的 `310-10` 已升级到新的 fwnode PCS API（`fwnode_phylink_pcs_parse()`，查找 `pcs-handle` 属性），而 `310-09` 仍是旧版 PCS 驱动（从不调用 `fwnode_pcs_add_provider()`），`an7581.dtsi` 里写的也还是旧属性名 `pcs = <...>`。三者版本错配，导致 GDM4 在 probe 阶段拿到 `-ENODEV`，`airoha_eth` 整体探测失败，DSA 交换机随之找不到 conduit：
+> ℹ️ **这条线固定在 fzs209 的快照上，刻意不跟进上游。** 曾经尝试把它 rebase 到 immortalwrt `openwrt-25.12` 最新，结果固件编得过但刷上去完全没有网络。原因是上游的 airoha 补丁栈已推进到 v7.2 的 `airoha_gdm_dev` 重构（`161-*`、`165-*`、`166`，共 13 个补丁），`310-10` 随之升级到新的 fwnode PCS API（`fwnode_phylink_pcs_parse()` 查找 `pcs-handle`），但 `310-09` 仍是旧版 PCS 驱动（从不调用 `fwnode_pcs_add_provider()`），`an7581.dtsi` 里也还是旧属性名 `pcs = <...>`。三者错配使 GDM4 在 probe 阶段拿到 `-ENODEV`，`airoha_eth` 整体探测失败，DSA 交换机随之找不到 conduit：
 >
 > ```
 > mt7530-mmio 1fb58000.switch: Failed to register DSA switch: -517
 > platform 1fb58000.switch: deferred probe pending: (reason unknown)
 > ```
 >
-> `-ENODEV` 在 `really_probe()` 里走的是 `pr_debug`，所以日志中看不到 `airoha_eth` 的任何报错。修复需要上游把 `310-09` 与 dtsi 一并更新到新 API，本项目暂不自行回移。
+> `-ENODEV` 在 `really_probe()` 里走的是 `pr_debug`，日志里看不到 `airoha_eth` 的任何报错，极难排查。而旧的 `310-10` 挂在 `airoha_alloc_gdm_port()` 与 `port->dev` 上，正是 `161-01` 重写掉的部分，无法套回新树 —— 换句话说这条线要么停在旧快照，要么等上游把 `310-09` 与 dtsi 一并更新到新 API。既然旧快照实测稳定，就先停在这里。
+>
+> 那次 rebase 的状态归档在源码仓库的 `archive/openwrt-25.12-XG-040G-MD-upstream` 分支，供日后上游修好时参考。想要新内核与持续跟进上游，请用 master 线。
 
 **master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，外加一个 tcboot 引导变体。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
 
