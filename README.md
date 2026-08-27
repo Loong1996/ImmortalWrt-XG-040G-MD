@@ -25,16 +25,25 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与内存颗粒容量（想额外加装软件包，见下方[选包页](#临时加装软件包选包页)）
 3. 约 1~2 小时后，固件发布在本仓库的 Releases 中
 
-**分支选择建议：`openwrt-25.12-XG-040G-MD`（默认）**
+**分支选择建议：`master-XG-040G-MD`（默认）**
 
-| 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 |
-| --- | --- | --- | --- | --- |
-| `openwrt-25.12-XG-040G-MD` | immortalwrt `openwrt-25.12`，落后 0 | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` |
-| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-tcboot` | 6.18 | `config/xg-040g-md-master.config` |
+| 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 | 状态 |
+| --- | --- | --- | --- | --- | --- |
+| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-tcboot` | 6.18 | `config/xg-040g-md-master.config` | ✅ 已实机验证 |
+| `openwrt-25.12-XG-040G-MD` | immortalwrt `openwrt-25.12`，落后 0 | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` | ⚠️ 编得过，但刷上去无网络 |
 
 两条线各自只有 1~2 个提交叠在上游之上，跟进上游只需 rebase 一次。
 
 **25.12 线**：上游没有 XG-040G-MD 支持，设备 DTS、镜像定义与 SkyHigh S35ML 闪存补丁（`backport-6.12/430`、`431`）均由本项目自带。FM25G01B/FM25G02B 已改由上游 `backport-6.12/436`、`437` 提供。
+
+> ⚠️ **25.12 线目前编得过但刷上去没有网络，暂不建议使用。** 这是上游 immortalwrt `openwrt-25.12` 自身的问题，不是本项目引入的：该分支的 `310-10` 已升级到新的 fwnode PCS API（`fwnode_phylink_pcs_parse()`，查找 `pcs-handle` 属性），而 `310-09` 仍是旧版 PCS 驱动（从不调用 `fwnode_pcs_add_provider()`），`an7581.dtsi` 里写的也还是旧属性名 `pcs = <...>`。三者版本错配，导致 GDM4 在 probe 阶段拿到 `-ENODEV`，`airoha_eth` 整体探测失败，DSA 交换机随之找不到 conduit：
+>
+> ```
+> mt7530-mmio 1fb58000.switch: Failed to register DSA switch: -517
+> platform 1fb58000.switch: deferred probe pending: (reason unknown)
+> ```
+>
+> `-ENODEV` 在 `really_probe()` 里走的是 `pr_debug`，所以日志中看不到 `airoha_eth` 的任何报错。修复需要上游把 `310-09` 与 dtsi 一并更新到新 API，本项目暂不自行回移。
 
 **master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，外加一个 tcboot 引导变体。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
 
@@ -46,7 +55,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | --- | --- | --- | --- | --- | --- |
 | `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
-| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，**需自行转存** | 否 |
+| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
 
 Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线只有一个设备，tag 不带变体段。
@@ -66,6 +75,48 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 * 因此**什么时候补上 `ri` 卷都可以**：`ubimkvol` + `ubiupdatevol` 写入后重启即生效，不需要重刷固件
 * 没有 `ri` 卷时随机生成的 MAC 会固化在 `/etc/xg-040g-md-mac`，重启与 `sysupgrade` 后保持不变；恢复出厂设置会重新生成
 * 与 25.12 线的 `bell_xg-040g-md` 分区表逐项一致，且声明了 `SUPPORTED_DEVICES += bell,xg-040g-md`，**可从 25.12 固件直接 sysupgrade 过来**
+* 本变体**不含 `uboot-envtools`**，原因见下方「关于 `tcboot.bin` 这个引导程序」
+
+##### 关于 `tcboot.bin` 这个引导程序
+
+`tcboot.bin` 不是本项目构建的，以下信息由对二进制的分析得出：
+
+| | |
+| --- | --- |
+| 基础 | [pepe2k/u-boot_mod](https://github.com/pepe2k/u-boot_mod) 的 Web 恢复界面移植到 Airoha AN7581 |
+| U-Boot 版本 | 2025.01，构建于 2025-10-01 09:07:19 +0800 |
+| 自定义版本号 | `uboot2.0 version:25.10.01` |
+| 结构 | ATF FIP @ `0x800`：BL2 + 6 个签名证书 + BL31(LZMA) + U-Boot(LZMA, 752272 字节) |
+| `bootext.ram` | 同一 FIP 但只含 BL2 + 证书，走 BootROM 的 RAM 加载预加载器 |
+
+二进制里没有嵌入构建者的用户名或主机名。U-Boot 是 GPLv2，如需源码可向分发方索取。
+
+**网页救砖入口**：按住 reset 键上电，U-Boot 会在 `192.168.1.1` 启动 HTTP 服务器，提供三个上传端点 —— `firmware`（整机固件）、`spinand`（裸 flash）、`uboot`（引导本身）。这是比串口方便得多的恢复方式。
+
+**内置默认环境**（`env` 分区 CRC 无效时 U-Boot 使用的值）：
+
+```
+loadaddr=0x81800000
+ipaddr=192.168.1.1
+serverip=192.168.1.10
+bootargs=ubi.mtd=ubi root=/dev/ubiblock0_1 rootwait
+bootdelay=3
+bootcmd=echo "Booting from UBI..." && ubi part ubi && ubi read $loadaddr kernel && echo "Starting kernel..." && bootm $loadaddr
+reset_factory=eraseenv && reset
+```
+
+> ⚠️ **不要在本变体上执行 `fw_setenv`。** `env` 分区从未被写过、CRC 无效，是**安全状态** —— U-Boot 会回落到上面这份正确的内置默认值。而 OpenWrt 的 `fw_setenv` 在 CRC 无效时用的是编译进它自己的通用默认值（`bootcmd=run distro_bootcmd`），一旦执行就会把这份与本机无关的环境连同正确的 CRC 写进 flash，U-Boot 从此不再使用内置默认值，直接掉进命令行。**整个过程不报错、返回 0，重启才失联。** 正因如此本变体已移除 `uboot-envtools` 整包。真需要可写的 env 时，先在 U-Boot 命令行执行一次 `saveenv`。
+
+> 💡 `bootargs` 里的 `root=/dev/ubiblock0_1` 是**按卷号硬编码**的（kernel 是按卷名读取，不受影响）。因此 **UBI 卷的顺序不能改** —— 在 kernel 之前插入任何卷都会把 rootfs 顶到 2 号，导致 `Waiting for root device /dev/ubiblock0_1...` 卡死。
+
+**串口救砖**：`Hit any key to stop autoboot` 时按键进入命令行，可用
+
+```
+setenv bootargs 'ubi.mtd=ubi root=/dev/ubiblock0_2 rootwait'   # 卷号错位时临时纠正
+run bootcmd
+```
+
+`reset_factory` 等价于 `eraseenv && reset`。
 
 #### `stock` —— 寄生原厂分区，唯一可回退
 
@@ -99,15 +150,7 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 * 额外产出 `*-recovery.itb`，是 initramfs 救援镜像，另外三种变体都没有
 * 升级用 `sysupgrade.itb`
 * 原厂 `ri` 与 `bosa` 由官方转换流程转存为同名 UBI 卷，MAC 得以保留
-* ⚠️ **必须完成 `ri` 卷的转存**。该变体没有 `tcboot` 那样的占位卷兜底，`ri` 缺失时 `airoha_eth` 会因 nvmem 拿不到 MAC 而永久停在 deferred probe，整机无网络且日志里没有任何报错，表现为：
-
-  ```
-  mt7530-mmio 1fb58000.switch: Failed to register DSA switch: -517
-  platform 1fb58000.switch: deferred probe pending: (reason unknown)
-  platform 1fb50000.ethernet: deferred probe pending: (reason unknown)
-  ```
-
-  可用 `cat /sys/kernel/debug/devices_deferred` 与 `ubinfo -a` 确认
+* 与 `tcboot` 一样，`ri` 的读取由 preinit 钩子在用户态完成，**没转存 `ri` 卷也能正常启动**（退化为随机 MAC）；转存过则拿到真实硬件 MAC
 
 #### 互相能不能升级
 
@@ -120,7 +163,7 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 
 > ⚠️ **`tcboot` 与 `ubi` 都会覆盖原厂引导和原厂分区表。** 其中 `ri`（MAC、序列号）与 `bosa`（光模块校准）是逐机唯一的出厂数据，没有公开来源。**刷这两种之前务必做整片 flash 备份**，参见上文的[原厂分区备份教程](https://www.right.com.cn/forum/thread-8467912-1-1.html)。
 >
-> ℹ️ **`tcboot` 变体的引导已实机验证**：分区偏移与 `UBINIZE_OPTS` 正确，tcboot 能引导其产出的镜像并进入系统。早期版本因 ubi 中缺少 `ri` 卷导致网络驱动永久 deferred probe，已由 `factory.bin` 预留占位卷修复；修复后的网络功能待复测。
+> ✅ **`tcboot` 变体已实机验证**：分区偏移与 `UBINIZE_OPTS` 正确，能引导、进系统，四个网口与 NPU、EN8811H 均正常。早期版本因 ubi 中缺少 `ri` 卷导致网络驱动永久 deferred probe，已通过去掉 dts 里的 nvmem 硬依赖、改由 preinit 钩子在用户态读取该卷解决。
 >
 > ⚠️ 25.12 线的 `bell_xg-040g-md` 没有声明 `all_flash` 分区，**在跑着的系统里无法直接 dd 整片 flash**；master 的三个变体都有。
 

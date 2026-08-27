@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        description: '选择编译分支'
+        description: '选择编译分支（25.12 线目前编得过但刷上去无网络，见 README）'
         required: true
-        default: 'openwrt-25.12-XG-040G-MD'
+        default: 'master-XG-040G-MD'
         type: choice
         options:
           - master-XG-040G-MD
