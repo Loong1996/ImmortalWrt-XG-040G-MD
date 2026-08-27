@@ -12,12 +12,12 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        description: '要生成索引的分支'
+        description: '给哪条线生成索引'
         required: true
-        default: 'both'
+        default: '两条线都生成'
         type: choice
         options:
-          - both
+          - 两条线都生成
           - openwrt-25.12-XG-040G-MD
           - master-XG-040G-MD
       device_variant:
@@ -45,7 +45,7 @@ jobs:
       fail-fast: false
       # 并发推 gh-pages 会撞车，交给发布步骤里的重试逻辑处理
       matrix:
-        branch: ${{ fromJSON(inputs.repo_branch == 'both'
+        branch: ${{ fromJSON(inputs.repo_branch == '两条线都生成'
           && '["openwrt-25.12-XG-040G-MD","master-XG-040G-MD"]'
           || format('["{0}"]', inputs.repo_branch)) }}
 
