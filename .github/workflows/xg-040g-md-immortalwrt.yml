@@ -437,13 +437,26 @@ jobs:
             f.write("PKG_VER_TARGETS=%s\n" % " ".join(targets))
         PY
 
+    - name: Download DL Package(下载DL软件包)
+      run: |
+        cd $OPENWRT_PATH
+        make download -j8
+        find dl -size -1024c -exec ls -l {} \;
+        find dl -size -1024c -exec rm -f {} \;
+
     - name: Precompile Overridden Packages(先编被覆盖的包)
       if: env.PKG_VER_TARGETS != ''
       run: |
         cd $OPENWRT_PATH
-        # 换过版本的包在整体编译序列里可能排得很靠后，编不过要等一两小时才暴露。
-        # 这里先单独编一遍，失败立刻退出。工具链（golang/host 等）整体编译本来也要编，
-        # 所以成功时不额外增加总时长。
+        # 换过版本的包在整体编译序列里排得靠后，编不过要等一两小时才暴露，这里先单独编一遍。
+        #
+        # 必须先把内核编出来：目标包的依赖链里往往有内核模块（sing-box 就依赖 kmod-tun、
+        # kmod-nft-tproxy），而 kmod 要等 target/linux 编完才有 build_dir 可用，否则会是
+        # "No rule to make target .../build_dir/..."，看着像目标包的错，其实不是。
+        # 内核与工具链整体编译本来也要编，不会重复，成功时不额外增加总时长。
+        echo "::group::先编内核（目标包的 kmod 依赖需要它）"
+        make -j$(nproc) target/linux/compile || make -j1 V=s target/linux/compile
+        echo "::endgroup::"
         for t in $PKG_VER_TARGETS; do
           echo "::group::$t"
           make "$t/compile" -j$(nproc) || {
@@ -453,13 +466,6 @@ jobs:
           }
           echo "::endgroup::"
         done
-
-    - name: Download DL Package(下载DL软件包)
-      run: |
-        cd $OPENWRT_PATH
-        make download -j8
-        find dl -size -1024c -exec ls -l {} \;
-        find dl -size -1024c -exec rm -f {} \;
 
     - name: Compile Firmware(开始编译固件)
       id: compile
