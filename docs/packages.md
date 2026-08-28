@@ -136,6 +136,8 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 ## 指定软件包版本
 
+> ⚗️ **实验性。** feed 里的 Makefile 是按它自带的那个版本写的 —— build tag、依赖、补丁都不会跟着版本变，换了不一定编得过，编过了也不保证运行正常。跨大版本尤其如此。
+
 版本写在 feed 的包 Makefile 里，不在 `.config`。有两个地方能覆盖它：
 
 | 来源 | 格式 | 适合 |
@@ -153,6 +155,8 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 4. 算出实际 sha256 写回 `PKG_HASH`，**再跑一次 download 确认校验能过**
 
 所以只填版本号，**不用自己算哈希**。Release 正文的「🔖 软件包版本覆盖」会列出本次改了哪些包，并标明来自输入框还是配置文件。
+
+改过版本的包会在整体编译之前**先单独编一遍**，编不过立刻退出 —— 这类包在编译序列里常排得很靠后，不先编的话要等一两个小时才暴露。工具链整体编译本来也要编，所以成功时不额外费时。
 
 ### 限制
 

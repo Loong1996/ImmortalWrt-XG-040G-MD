@@ -39,7 +39,7 @@ on:
         default: ''
         type: string
       pkg_versions:
-        description: '指定软件包版本（空格分隔，如 sing-box=1.13.19；留空则用 config/pkg-versions.txt）'
+        description: '⚗️ 实验性 · 指定软件包版本（如 sing-box=1.13.19，跨版本不保证编得过；留空用 config/pkg-versions.txt）'
         required: false
         default: ''
         type: string
@@ -376,7 +376,7 @@ jobs:
                     h.update(blk)
             return h.hexdigest()
 
-        done = []
+        done, targets = [], []
         for pkg, (ver, origin) in want.items():
             mks = glob.glob("feeds/*/*/%s/Makefile" % pkg) or glob.glob("feeds/*/*/*/%s/Makefile" % pkg)
             if not mks:
@@ -428,11 +428,31 @@ jobs:
                 sys.exit("::error::%s 写回 PKG_HASH 后校验失败" % pkg)
             print("  %s  sha256=%s" % (got[0], digest))
             done.append((pkg, cur, ver, origin))
+            targets.append("package/feeds/%s/%s" % (feed, pkg))
 
         note = ["- %s：`%s` → `%s`（%s）" % d for d in done] or ["- 本次未覆盖任何软件包版本"]
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             f.write("PKG_VER_NOTE<<PKGVEREOF\n" + "\n".join(note) + "\nPKGVEREOF\n")
+            # 换了版本的包先单独编一遍，编不过就立刻退出，不必等一两小时的整体编译
+            f.write("PKG_VER_TARGETS=%s\n" % " ".join(targets))
         PY
+
+    - name: Precompile Overridden Packages(先编被覆盖的包)
+      if: env.PKG_VER_TARGETS != ''
+      run: |
+        cd $OPENWRT_PATH
+        # 换过版本的包在整体编译序列里可能排得很靠后，编不过要等一两小时才暴露。
+        # 这里先单独编一遍，失败立刻退出。工具链（golang/host 等）整体编译本来也要编，
+        # 所以成功时不额外增加总时长。
+        for t in $PKG_VER_TARGETS; do
+          echo "::group::$t"
+          make "$t/compile" -j$(nproc) || {
+            echo "::error::$t 编译失败 —— 换的版本与 feed 里的 Makefile 不匹配，下面是单线程重跑的详细日志"
+            make "$t/compile" -j1 V=s
+            exit 1
+          }
+          echo "::endgroup::"
+        done
 
     - name: Download DL Package(下载DL软件包)
       run: |

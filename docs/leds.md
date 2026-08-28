@@ -9,17 +9,11 @@ XG-040G-MD 是光猫改的路由器，**面板丝印还是光猫那套**，而 D
 | 电源 | `green:power` | 17 | 常亮 |
 | **注册** | `green:wan` | 18 | **不接管，常灭** |
 | **光信号** | `red:wan` | 19 | **不接管，常灭** |
-| **上网** | `green:wan-online` | 20 | wan 接口拿到地址才亮，掉线灭 |
+| **上网** | `green:wan-online` | 20 | **不接管，常灭** |
 | USB1 | `green:usb-1` | 35 | `usbport` trigger |
 | USB2 | `green:usb-2` | 34 | `usbport` trigger |
 
-「注册」和「光信号」是 PON 用的，当路由器时没有对应状态，**刻意不接管**。想自己派用场见下方[自定义](#自定义)。
-
-### 「上网」灯为什么用 hotplug 而不是 netdev trigger
-
-由 [`hotplug.d/iface/99-xg-040g-md-leds`](https://github.com/Loong1996/immortalwrt/blob/master-XG-040G-MD/target/linux/airoha/an7581/base-files/etc/hotplug.d/iface/99-xg-040g-md-leds) 跟着 wan 接口的 `ifup`/`ifdown` 走。
-
-`netdev` trigger 只能跟到网卡的 carrier —— 网线插上就算亮，表达不了「地址已经拿到、真能上网了」这件事；PPPoE 下 wan 的 netdev 还会变成 `pppoe-wan`，绑死物理口也不对。
+「注册」「光信号」「上网」这三个是光猫的灯，当路由器时没有对应状态，固件**一律不接管**，保持出厂行为不动。想自己派用场见下方[自定义](#自定义)。
 
 ## 网口灯
 
@@ -79,13 +73,24 @@ uci commit system
 
 `mode` 可用 `link`、`tx`、`rx`、`link_10`、`link_100`、`link_1000`、`link_2500` 组合。LuCI 里在**系统 → LED 配置**也能改。
 
-拿「光信号」红灯当断线告警，改 hotplug 脚本即可：
+「上网」和「光信号」想跟着 wan 接口走的话，`netdev` trigger 不合适 —— 它只能跟到网卡的 carrier，网线插上就算亮，表达不了「地址已经拿到」；PPPoE 下 wan 的 netdev 还会变成 `pppoe-wan`，绑死物理口也不对。用 hotplug：
 
 ```sh
-cat >> /etc/hotplug.d/iface/99-xg-040g-md-leds <<'EOF'
+cat > /etc/hotplug.d/iface/99-panel-leds <<'EOF'
+[ "$INTERFACE" = "wan" ] || exit 0
+
 case "$ACTION" in
-	ifup)   echo 0 > /sys/class/leds/red:wan/brightness ;;
-	ifdown) echo 1 > /sys/class/leds/red:wan/brightness ;;
+	ifup)
+		echo 1 > /sys/class/leds/green:wan-online/brightness   # 上网灯亮
+		echo 0 > /sys/class/leds/red:wan/brightness            # 光信号灯灭
+		;;
+	ifdown)
+		echo 0 > /sys/class/leds/green:wan-online/brightness
+		echo 1 > /sys/class/leds/red:wan/brightness            # 掉线亮红
+		;;
 esac
 EOF
+ifup wan     # 触发一次
 ```
+
+hotplug 脚本放在 overlay 里，`sysupgrade` 保留配置时会跟着留下。
