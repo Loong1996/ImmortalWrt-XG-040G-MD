@@ -2,7 +2,7 @@ name: XG-040G-MD
 
 # 让 Actions 列表直接显示本次选了什么，省得点进去翻日志里的 env 块。
 # 必须写成一行：折叠标量会把缩进更深的续行当字面量，在 ${{ }} 中间插进换行。
-run-name: "XG-040G-MD · ${{ inputs.repo_branch }} · ${{ inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}"
+run-name: "XG-040G-MD · ${{ inputs.repo_branch }} · ${{ inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}"
 
 on:
   workflow_dispatch:
@@ -38,11 +38,17 @@ on:
         required: false
         default: ''
         type: string
+      pkg_versions:
+        description: '指定软件包版本（空格分隔，如 sing-box=1.13.19；留空则用 config/pkg-versions.txt）'
+        required: false
+        default: ''
+        type: string
 
 env:
   DRAM_SIZE: ${{ github.event.inputs.dram_size }}
   DEVICE_VARIANT: ${{ github.event.inputs.device_variant }}
   EXTRA_PACKAGES: ${{ github.event.inputs.extra_packages }}
+  PKG_VERSIONS: ${{ github.event.inputs.pkg_versions }}
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
   DEVICE_TARGET: airoha
@@ -335,8 +341,9 @@ jobs:
         import glob, hashlib, os, re, subprocess, sys
 
         # 提前 return 会漏写 PKG_VER_NOTE，让 Release 正文里空出一段，所以一路走到底
+        # 两个来源：仓库里的 pkg-versions.txt 管长期固定的，workflow 输入管这一次，后者覆盖前者
+        want = {}
         cfg = os.path.join(os.environ["GITHUB_WORKSPACE"], "config/pkg-versions.txt")
-        want = []
         if not os.path.exists(cfg):
             print("没有 config/pkg-versions.txt")
         else:
@@ -347,9 +354,20 @@ jobs:
                 f = ln.split()
                 if len(f) != 2:
                     sys.exit("::error::pkg-versions.txt 第 %d 行应为 <包名> <版本>: %s" % (lineno, ln))
-                want.append((f[0], f[1]))
-            if not want:
-                print("pkg-versions.txt 里没有生效的条目")
+                want[f[0]] = (f[1], "pkg-versions.txt")
+
+        for tok in re.split(r"[\s,]+", (os.environ.get("PKG_VERSIONS") or "").strip()):
+            if not tok:
+                continue
+            if tok.count("=") != 1 or tok.startswith("=") or tok.endswith("="):
+                sys.exit("::error::pkg_versions 输入应为 <包名>=<版本>，多个用空格分隔: %s" % tok)
+            k, v = tok.split("=")
+            if k in want and want[k][0] != v:
+                print("%-18s 输入覆盖文件设定（%s -> %s）" % (k, want[k][0], v))
+            want[k] = (v, "本次指定")
+
+        if not want:
+            print("没有要覆盖版本的软件包")
 
         def sha256(path):
             h = hashlib.sha256()
@@ -359,7 +377,7 @@ jobs:
             return h.hexdigest()
 
         done = []
-        for pkg, ver in want:
+        for pkg, (ver, origin) in want.items():
             mks = glob.glob("feeds/*/*/%s/Makefile" % pkg) or glob.glob("feeds/*/*/*/%s/Makefile" % pkg)
             if not mks:
                 sys.exit("::error::feeds 里找不到软件包 %s" % pkg)
@@ -409,9 +427,9 @@ jobs:
             if subprocess.run(["make", target], capture_output=True, text=True).returncode != 0:
                 sys.exit("::error::%s 写回 PKG_HASH 后校验失败" % pkg)
             print("  %s  sha256=%s" % (got[0], digest))
-            done.append((pkg, cur, ver))
+            done.append((pkg, cur, ver, origin))
 
-        note = ["- %s：`%s` → `%s`" % d for d in done] or ["- 本次未覆盖任何软件包版本"]
+        note = ["- %s：`%s` → `%s`（%s）" % d for d in done] or ["- 本次未覆盖任何软件包版本"]
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
             f.write("PKG_VER_NOTE<<PKGVEREOF\n" + "\n".join(note) + "\nPKGVEREOF\n")
         PY

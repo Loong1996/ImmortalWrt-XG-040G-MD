@@ -136,12 +136,14 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 ## 指定软件包版本
 
-版本写在 feed 的包 Makefile 里，不在 `.config`。[`config/pkg-versions.txt`](../config/pkg-versions.txt) 用来覆盖它，一行一个 `<包名> <版本>`，两条编译线共用：
+版本写在 feed 的包 Makefile 里，不在 `.config`。有两个地方能覆盖它：
 
-```
-sing-box    1.13.19
-xray-core   25.8.3
-```
+| 来源 | 格式 | 适合 |
+| --- | --- | --- |
+| `Run workflow` 的**指定软件包版本**输入框 | `sing-box=1.13.19 xray-core=25.8.3` | 临时试某个版本，不动仓库 |
+| [`config/pkg-versions.txt`](../config/pkg-versions.txt) | 一行一个 `sing-box 1.13.19` | 长期固定，两条编译线共用 |
+
+同一个包两边都写时**输入框优先**，日志里会提示被覆盖。
 
 编译前 workflow 会：
 
@@ -150,7 +152,7 @@ xray-core   25.8.3
 3. 跑一次 `make package/feeds/<feed>/<包名>/download` 把 tarball 拉下来
 4. 算出实际 sha256 写回 `PKG_HASH`，**再跑一次 download 确认校验能过**
 
-所以只填版本号，**不用自己算哈希**。Release 正文的「🔖 软件包版本覆盖」会列出本次改了哪些包。
+所以只填版本号，**不用自己算哈希**。Release 正文的「🔖 软件包版本覆盖」会列出本次改了哪些包，并标明来自输入框还是配置文件。
 
 ### 限制
 
