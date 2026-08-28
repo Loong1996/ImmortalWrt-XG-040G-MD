@@ -44,7 +44,14 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .sub2{padding:6px 12px 2px 28px;color:var(--dim);font-size:12px}
 .row{display:flex;gap:8px;align-items:baseline;padding:3px 12px 3px 28px}
 .row:hover{background:var(--chip)}
-.row label{display:flex;gap:8px;align-items:baseline;cursor:pointer;flex:1;min-width:0}
+.row label,.row .lab{display:flex;gap:8px;align-items:baseline;flex:1;min-width:0}
+.row label{cursor:pointer}
+.mark{border:0;background:none;padding:0 2px;font:inherit;line-height:1;
+  color:var(--dim);cursor:pointer;border-radius:4px}
+.mark.on{color:var(--accent)}
+.mark:hover{background:var(--chip);color:var(--fg)}
+.legend{color:var(--dim);font-size:12px;margin-top:4px}
+.legend b{color:var(--accent);font-weight:400}
 .row .name{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap}
 .row .ver{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:11px;color:var(--dim);white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis}
@@ -165,6 +172,8 @@ var view = "all";   // all=全部可选 / chg=仅看改动 / fw=本次固件清�
 // 详情和主索引拆两份，主索引先到先渲染，详情后台再取。
 // 早先是点 ⓘ 才取，现在行尾的可装性标记要用依赖图，改成一上来就要
 var detail = null, detailState = "none", rev = null, expanded = null, showClosure = false;
+// 被依赖和缺失依赖都可能很长（libc 被 7229 个包依赖），默认截断，可展开
+var showRev = false, showGap = false;
 // 闭包只取决于依赖图，跟勾选无关，算一次存着 —— 行尾的可装性标记每次
 // 重绘都要对几百行各算一遍，不缓存会明显拖慢输入
 var cloCache = {};
@@ -385,6 +394,8 @@ function jumpTo(name) {
   view = "all";
   expanded = name;
   showClosure = false;
+  showRev = false;
+  showGap = false;
   render();
 }
 
@@ -407,6 +418,25 @@ function refPill(x, cond, cls) {
     e.title = "非软件包（虚拟包或内核符号），索引里没有对应条目";
   }
   return e;
+}
+
+// 列一串包，超过 MAX_REV 就截断，给个展开按钮把剩下的放出来。
+// libc 被 7229 个包依赖，一次全铺开光建 DOM 就要不少时间，所以默认收着，
+// 按钮上写清总数，点的人知道自己在要什么。
+function pillList(box, idxs, open, onToggle, mkPill) {
+  var shown = (open || idxs.length <= MAX_REV) ? idxs : idxs.slice(0, MAX_REV);
+  var wrap = el("div", "list");
+  shown.forEach(function (t) { wrap.appendChild(mkPill(t)); });
+  box.appendChild(wrap);
+  if (idxs.length <= MAX_REV) return;
+  var b = el("button", "pill", open
+    ? "收起，只看前 " + MAX_REV + " 个"
+    : "展开全部 " + idxs.length + " 个");
+  b.addEventListener("click", function () { onToggle(!open); render(); });
+  var w = el("div", "list");
+  w.style.marginTop = "6px";
+  w.appendChild(b);
+  box.appendChild(w);
 }
 
 function detailFor(p) {
@@ -450,14 +480,9 @@ function detailFor(p) {
         var ka = isKmod(pkgs[a].n) ? 0 : 1, kb = isKmod(pkgs[b].n) ? 0 : 1;
         return ka - kb || (pkgs[a].n < pkgs[b].n ? -1 : 1);
       });
-      var ml = el("div", "list");
-      ord.slice(0, MAX_REV).forEach(function (t) {
-        ml.appendChild(refPill(t, null, isKmod(pkgs[t].n) ? "bad" : null));
+      pillList(box, ord, showGap, function (v) { showGap = v; }, function (t) {
+        return refPill(t, null, isKmod(pkgs[t].n) ? "bad" : null);
       });
-      box.appendChild(ml);
-      if (ord.length > MAX_REV) {
-        box.appendChild(el("p", "note", "另有 " + (ord.length - MAX_REV) + " 个未列出"));
-      }
       var acts = el("div", "list");
       acts.style.marginTop = "6px";
       var b1 = el("button", "pill", "补齐依赖（" + g.miss.length + " 个）");
@@ -539,12 +564,9 @@ function detailFor(p) {
   if (!r.length) {
     box.appendChild(el("p", "note", "没有别的软件包依赖它，可以放心移除"));
   } else {
-    var rl = el("div", "list");
-    r.slice(0, MAX_REV).forEach(function (t) { rl.appendChild(refPill(t, null)); });
-    box.appendChild(rl);
-    if (r.length > MAX_REV) {
-      box.appendChild(el("p", "note", "另有 " + (r.length - MAX_REV) + " 个未列出"));
-    }
+    pillList(box, r, showRev, function (v) { showRev = v; }, function (t) {
+      return refPill(t, null);
+    });
     box.appendChild(el("p", "note",
       "这些包里只要有一个被选中，本包就移除不掉 —— 构建时会给出 warning 并照常编进固件"));
   }
@@ -578,6 +600,12 @@ function fwSummary(pool) {
   if (d) parts.push("新增带入 " + d);
   box.appendChild(el("div", "n", "本次固件清单：共 " + pool.length + " 个软件包"));
   box.appendChild(el("div", "brk", parts.join("　＋　")));
+  var lg = el("div", "legend");
+  lg.appendChild(el("b", null, "●"));
+  lg.appendChild(document.createTextNode(" 配置里点名要的　"));
+  lg.appendChild(el("span", null, "○"));
+  lg.appendChild(document.createTextNode(" 依赖带进来的　—— 两种都会进固件，点记号可以互换"));
+  box.appendChild(lg);
   box.appendChild(el("p", "note",
     "前两档来自 defconfig 已经算好的那份，准确。「新增带入」是估的下限 —— " +
     "只算了无条件依赖，条件依赖和互斥备选算不出来。取消勾选即可移除；但被移除的包" +
@@ -588,12 +616,28 @@ function fwSummary(pool) {
 function rowFor(p) {
   var item = el("div", "item");
   var row = el("div", "row");
-  var lab = el("label");
-  var cb = document.createElement("input");
-  cb.type = "checkbox";
-  cb.checked = isChecked(p);
-  cb.addEventListener("change", function () { toggle(p.n); });
-  lab.appendChild(cb);
+  var lab;
+  if (view === "fw" && !officialMode) {
+    // 清单里每一行都会进固件，勾/不勾在这个视图读起来像"在/不在"，实际
+    // 含义是"配置里点名要的 / 依赖带进来的"。换成两个不会误读的记号。
+    lab = el("div", "lab");
+    var named = isChecked(p);
+    var mk = el("button", "mark" + (named ? " on" : ""), named ? "●" : "○");
+    mk.title = named
+      ? "点名要的：配置里显式选了它。点一下取消，它就不进固件了"
+      : "依赖带进来的：你没点名，是别的包需要它。点一下改成点名要，" +
+        "这样就算带它进来的包被移掉，它也还在";
+    mk.setAttribute("aria-label", (named ? "取消点名 " : "点名要 ") + p.n);
+    mk.addEventListener("click", function () { toggle(p.n); });
+    lab.appendChild(mk);
+  } else {
+    lab = el("label");
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = isChecked(p);
+    cb.addEventListener("change", function () { toggle(p.n); });
+    lab.appendChild(cb);
+  }
   lab.appendChild(el("span", "name", p.n));
   if (p.v) lab.appendChild(el("span", "ver", p.v));
   if (p.t) lab.appendChild(el("span", "t", p.t));
@@ -625,6 +669,8 @@ function rowFor(p) {
     } else {
       expanded = p.n;
       showClosure = false;
+      showRev = false;
+      showGap = false;
       if (!officialMode && detailState === "none") loadDetail();
     }
     render();
@@ -872,6 +918,8 @@ function resetData() {
   fwPulled = null;
   expanded = null;
   showClosure = false;
+  showRev = false;
+  showGap = false;
 }
 
 function loadOfficial(fallbackReason) {
