@@ -50,6 +50,11 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
   font-size:11px;color:var(--dim);white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis}
 .row .t{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .badge{font-size:11px;padding:0 6px;border-radius:10px;background:var(--chip);color:var(--dim);white-space:nowrap}
+.badge.ok{color:var(--add)}
+.badge.mid{color:var(--warn)}
+.badge.no{color:var(--del)}
+.gap{font-size:12px;margin:4px 0 6px}
+.gap.ok{color:var(--add)} .gap.mid{color:var(--warn)} .gap.no{color:var(--del)}
 .info{border:0;background:none;color:var(--dim);cursor:pointer;padding:0 4px;
   font:inherit;line-height:1;border-radius:4px}
 .info:hover{color:var(--accent);background:var(--chip)}
@@ -89,7 +94,11 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
   <h1>XG-040G-MD 选包</h1>
   <p class="sub">勾选想要的软件包，把底部生成的字符串粘进
     <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/actions" target="_blank" rel="noopener">Actions</a>
-    里 <code>附加软件包</code> 那一栏，再跑一次构建即可。点每行右侧的 <b>ⓘ</b> 看依赖、冲突与上游地址。</p>
+    里 <code>附加软件包</code> 那一栏，再跑一次构建即可。点每行右侧的 <b>ⓘ</b> 看依赖、冲突与上游地址。<br>
+    没勾的包行尾会标出刷完机还能不能装：<span class="badge ok">可后装</span>
+    直接 <code>apk add</code> 就行；<span class="badge mid">缺 N 依赖</span>
+    官方源多半能自己补；<span class="badge no">缺 N 内核模块</span>
+    内核模块事后补不了，现在不编就只能回头重编。</p>
 
   <div class="bar">
     <select id="src"></select>
@@ -145,8 +154,12 @@ var MAX_REV = 40;     // 反向依赖最多列几个（libc 这种会有上千�
 
 var pkgs = [], byName = {}, changes = {};
 var source = OPTIONS[0].v, branch = OPTIONS[0].v, officialMode = false, onlyChanged = false;
-// 详情按需加载：主索引一万三千个包已经一兆多，多数人搜个名字勾上就走
+// 详情和主索引拆两份，主索引先到先渲染，详情后台再取。
+// 早先是点 ⓘ 才取，现在行尾的可装性标记要用依赖图，改成一上来就要
 var detail = null, detailState = "none", rev = null, expanded = null, showClosure = false;
+// 闭包只取决于依赖图，跟勾选无关，算一次存着 —— 行尾的可装性标记每次
+// 重绘都要对几百行各算一遍，不缓存会明显拖慢输入
+var cloCache = {};
 
 function $(id) { return document.getElementById(id); }
 
@@ -244,6 +257,7 @@ function loadDetail() {
 // 无条件依赖的传递闭包，不含自己。条件依赖不计入 —— 它们要不要装取决于
 // 别的配置开关，算进来会虚报。
 function closure(start) {
+  if (cloCache[start]) return cloCache[start];
   var seen = {}, queue = [start], out = [];
   seen[start] = true;
   while (queue.length) {
@@ -255,7 +269,72 @@ function closure(start) {
       queue.push(x);
     });
   }
+  cloCache[start] = out;
   return out;
+}
+
+/* ---------- 事后可装性 ---------- */
+
+// 刷完机再 apk add 能不能装上，取决于依赖里有没有事后补不了的东西。
+//
+// 内核模块补不了。kmod 硬依赖一个带哈希的 kernel 版本，形如
+// 6.18.44~c3e3e221bd513a781451e164ab71a3b5-r1；哈希由内核配置与补丁算出，
+// 自建固件跟官方源必然不同（官方那份同样是 6.18.44，哈希却是 7c08b90b…），
+// 所以官方 kmod 装不上自建固件，反过来也一样。kmod 只有一次机会：编固件时。
+//
+// 别的包补得了。纯脚本包和大部分带库的包官方源里都有，apk 会自己解析装上。
+// 代价是自建固件混用官方源本就不是官方支持的用法，带 .so 的包可能因为 base
+// 不同步出问题 —— 所以这一档只说"多半能装"。
+function isKmod(name) { return name.indexOf("kmod-") === 0; }
+
+// 这个包最终会不会躺在固件里：依赖带入的，或勾上了的
+function inFirmware(p) { return p.sel === 1 || isChecked(p); }
+
+// null 表示这个问题不成立或算不出来：官方索引没有依赖数据、详情还没到、
+// 或者本体已经在固件里了（那就没有"事后装"这回事）。
+function gapFor(p) {
+  if (officialMode || detailState !== "ready" || !detail) return null;
+  if (inFirmware(p)) return null;
+  var miss = [], missK = [];
+  closure(p.i).forEach(function (i) {
+    if (inFirmware(pkgs[i])) return;
+    miss.push(i);
+    if (isKmod(pkgs[i].n)) missK.push(i);
+  });
+  // 本体自己就是 kmod 的话，依赖齐不齐都改变不了结论
+  return { miss: miss, missK: missK, selfKmod: isKmod(p.n) };
+}
+
+function gapVerdict(g) {
+  if (g.selfKmod) {
+    return { cls: "no", short: "只能编进固件",
+      tip: "本体就是内核模块，事后 apk 装不上，必须在这次编译里带进去。" };
+  }
+  if (g.missK.length) {
+    return { cls: "no", short: "缺 " + g.missK.length + " 内核模块",
+      tip: "依赖里有 " + g.missK.length + " 个内核模块不在固件里。内核模块事后补不了，" +
+           "现在不编进去，刷完机就只能回头重编。" };
+  }
+  if (g.miss.length) {
+    return { cls: "mid", short: "缺 " + g.miss.length + " 依赖",
+      tip: "缺 " + g.miss.length + " 个依赖，但都不是内核模块。刷完机 apk add 时官方源多半" +
+           "能自动补齐 —— 自建固件混用官方源不是官方支持的用法，带 .so 的包可能出问题，" +
+           "想稳就用下面的按钮先编进去。" };
+  }
+  return { cls: "ok", short: "可后装",
+    tip: "依赖都已经在固件里了，刷完机直接 apk add 就能装，不用重编。" };
+}
+
+// 把一批包加进选中列表。基础配置里本来就有、只是被手动移除过的，撤销那次
+// 移除即可，不必记成新增。
+function addPkgs(idxs) {
+  idxs.forEach(function (i) {
+    var p = pkgs[i];
+    if (p.sel === 2) delete changes[p.n];
+    else changes[p.n] = "add";
+  });
+  saveChanges();
+  render();
 }
 
 function jumpTo(name) {
@@ -315,6 +394,47 @@ function detailFor(p) {
   var x = detail.x[i] || [], r = rev[i] || [];
   var licId = detail.l[i], url = detail.u[i];
 
+  // 这一节放最前面：它回答的是“现在不编，以后还有没有机会”，
+  // 比版本、许可证都要紧
+  var g = gapFor(p);
+  if (g) {
+    var gv = gapVerdict(g);
+    box.appendChild(el("h4", null, "事后能不能装"));
+    box.appendChild(el("p", "gap " + gv.cls, gv.tip));
+    if (g.miss.length) {
+      // 内核模块排前面：截断时先保证看得见那些补不了的
+      var ord = g.miss.slice().sort(function (a, b) {
+        var ka = isKmod(pkgs[a].n) ? 0 : 1, kb = isKmod(pkgs[b].n) ? 0 : 1;
+        return ka - kb || (pkgs[a].n < pkgs[b].n ? -1 : 1);
+      });
+      var ml = el("div", "list");
+      ord.slice(0, MAX_REV).forEach(function (t) {
+        ml.appendChild(refPill(t, null, isKmod(pkgs[t].n) ? "bad" : null));
+      });
+      box.appendChild(ml);
+      if (ord.length > MAX_REV) {
+        box.appendChild(el("p", "note", "另有 " + (ord.length - MAX_REV) + " 个未列出"));
+      }
+      var acts = el("div", "list");
+      acts.style.marginTop = "6px";
+      var b1 = el("button", "pill", "补齐依赖（" + g.miss.length + " 个）");
+      b1.title = "把缺的依赖全部编进固件，本体不编";
+      b1.addEventListener("click", function () { addPkgs(g.miss); });
+      acts.appendChild(b1);
+      if (g.missK.length && g.missK.length < g.miss.length) {
+        var b2 = el("button", "pill", "只补内核模块（" + g.missK.length + " 个）");
+        b2.title = "只把内核模块编进固件，其余依赖留给官方源";
+        b2.addEventListener("click", function () { addPkgs(g.missK); });
+        acts.appendChild(b2);
+      }
+      box.appendChild(acts);
+      box.appendChild(el("p", "note",
+        "两个按钮都只加依赖，不会把本体勾上。刷完机再 apk add 装本体，" +
+        "版本跟着官方源走，以后 apk upgrade 也能跟进。" +
+        "加完可以在列表里再手动增删。"));
+    }
+  }
+
   // 版本 / 许可证 / 上游
   var meta = el("div", "list");
   if (p.v) meta.appendChild(el("span", "pill", "v" + p.v));
@@ -355,7 +475,7 @@ function detailFor(p) {
     wrap.appendChild(btn);
     box.appendChild(wrap);
     if (showClosure) {
-      var cl = closure(i);
+      var cl = closure(i).slice();
       box.appendChild(el("h4", null, "勾上它总共会带进 " + cl.length + " 个包"));
       var cld = el("div", "list");
       cl.sort(function (a2, b2) { return pkgs[a2].n < pkgs[b2].n ? -1 : 1; });
@@ -410,6 +530,13 @@ function rowFor(p) {
     var b = el("span", "badge", changes[p.n] === "add" ? "＋新增" : "－移除");
     b.style.color = changes[p.n] === "add" ? "var(--add)" : "var(--del)";
     row.appendChild(b);
+  }
+  var g = gapFor(p);
+  if (g) {
+    var gv = gapVerdict(g);
+    var gb = el("span", "badge " + gv.cls, gv.short);
+    gb.title = gv.tip;
+    row.appendChild(gb);
   }
   var info = el("button", "info", "ⓘ");
   info.title = "查看依赖、冲突与上游地址";
@@ -659,6 +786,7 @@ function resetData() {
   detail = null;
   rev = null;
   detailState = "none";
+  cloCache = {};
   expanded = null;
   showClosure = false;
 }
@@ -714,7 +842,11 @@ function loadBuilt() {
       var list = d.packages || [];
       var base = list.filter(function (p) { return p.sel === 2; }).length;
       apply(list, false, "共 " + list.length + " 个可选软件包 · 索引来自 " +
-        (d.tag || "未知") + " · 基础配置已含 " + base + " 个 · 点行尾 ⓘ 看依赖与冲突");
+        (d.tag || "未知") + " · 基础配置已含 " + base +
+        " 个 · 行尾标记这个包刷完机还能不能装，点 ⓘ 看依赖与冲突");
+      // 详情表 gzip 后只有几十 KB，后台顺手取回来。行尾的可装性
+      // 标记要用它里的依赖图，顺便让点 ⓘ 变成即开即显
+      loadDetail();
     })
     .catch(function (e) {
       loadOfficial("取不到 " + branch + " 的编译索引（" + e.message + "），这条线可能还没生成过索引。");
