@@ -193,10 +193,25 @@ git push --force-with-lease
 
 编辑后提交即可，依赖由 `make defconfig` 自动补全。当前已内置：
 
-* **代理**：Passwall（Xray / sing-box / geoview）、OpenClash
-* **DNS**：dnsmasq-full（dnssec + ipset + nftset）、SmartDNS、AdGuardHome
-* **网络工具**：SQM、UPnP、DDNS、Watchcat、nlbwmon、ttyd、irqbalance、tcpdump-mini、iperf3、conntrack
-* **系统**：Argon 主题、attendedsysupgrade、apk 包管理界面、USB 存储与 extroot、中文语言包
+* **DNS**：dnsmasq-full（dnssec + ipset + nftset）
+* **网络工具**：SQM、UPnP、DDNS、Watchcat、nlbwmon、ttyd 网页终端、irqbalance
+* **诊断工具**：tcpdump-mini、iperf3、mtr-json、bind-dig、lsof、iftop、conntrack、htop、stress-ng
+* **系统**：Argon 主题、attendedsysupgrade、apk 包管理界面、USB 存储与 extroot、中文语言包、scp/sftp（`openssh-sftp-server`，dropbear 自己不提供 SFTP 子系统，不装它 `scp` 用不了）
+
+**默认不带代理与去广告。** Passwall、OpenClash、AdGuardHome、SmartDNS 都很个人化，而且是体积的绝对大头——它们带的 sing-box(14.3 MB)、xray-core(10.4 MB)、adguardhome(10.9 MB)、openclash(7.8 MB)、geoview(2.8 MB) 五项就占了原固件的八成。拿掉之后固件从 **54 MB 降到约 12 MB**，基本等于"[官方默认包](https://downloads.immortalwrt.org/snapshots/targets/airoha/an7581/profiles.json) + LuCI 中文界面 + USB/extroot + 诊断工具"。
+
+需要的人去[选包页](#临时加装软件包选包页)勾上，重编一次即可。要搜的名字：
+
+| 想要 | 选包页上搜这些 |
+| --- | --- |
+| Passwall | `luci-app-passwall` `xray-core` `sing-box` `geoview` |
+| OpenClash | `luci-app-openclash` `ruby` `ruby-yaml` |
+| AdGuard Home | `luci-app-adguardhome` `adguardhome` |
+| SmartDNS | `smartdns` `luci-app-smartdns` |
+
+引擎要单独选——`luci-app-passwall` 的引擎是靠它自己的 `INCLUDE_*` 子选项带的，那些不是包名，选包页列不出来，所以得把 `xray-core`、`sing-box` 一起勾上。
+
+`kmod-nft-tproxy` 与 `kmod-tun` **特意保留**（两个加起来不到 30 KB）。内核模块事后补不了，删了的话"去选包页加回代理"这条路就断了——页面上会直接标成红色的「缺 N 内核模块」。
 
 每个 Release 都会附带一份 `custom-packages.txt`，列出该次编译实际勾选的自定义软件包（按配置文件分组，带注释）；固件实际安装的完整包列表见同一 Release 中的 `*.manifest`。
 

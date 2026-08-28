@@ -487,6 +487,11 @@ jobs:
           ### 🧩 附加软件包
           ${{ env.EXTRA_NOTE }}
           - 想加装别的软件包：在[选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/)勾选后复制包名串，粘进本 workflow 的 `extra_packages` 输入重新编译
+          ### ✂️ 默认不带代理与去广告
+          - Passwall / OpenClash / AdGuardHome / SmartDNS 都不在默认固件里 —— 它们很个人化，且占了原固件八成体积
+          - 需要就去选包页勾，重编一次即可。要搜：`luci-app-passwall` `xray-core` `sing-box` `geoview` / `luci-app-openclash` `ruby` `ruby-yaml` / `luci-app-adguardhome` `adguardhome` / `smartdns` `luci-app-smartdns`
+          - 引擎得单独勾：passwall 的引擎靠它自己的 `INCLUDE_*` 子选项带，那不是包名，选包页列不出来
+          - `kmod-nft-tproxy` 与 `kmod-tun` 已保留，所以加回代理时不必为内核模块重来一次
 
     - name: Publish Package Selector(发布选包页)
       if: steps.compile.outputs.status == 'success'
