@@ -328,6 +328,94 @@ jobs:
           echo EXTRANOTEEOF
         } >> $GITHUB_ENV
 
+    - name: Override Package Versions(覆盖软件包版本)
+      run: |
+        cd $OPENWRT_PATH
+        python3 - <<'PY'
+        import glob, hashlib, os, re, subprocess, sys
+
+        # 提前 return 会漏写 PKG_VER_NOTE，让 Release 正文里空出一段，所以一路走到底
+        cfg = os.path.join(os.environ["GITHUB_WORKSPACE"], "config/pkg-versions.txt")
+        want = []
+        if not os.path.exists(cfg):
+            print("没有 config/pkg-versions.txt")
+        else:
+            for lineno, raw in enumerate(open(cfg, encoding="utf-8"), 1):
+                ln = raw.split("#")[0].strip()
+                if not ln:
+                    continue
+                f = ln.split()
+                if len(f) != 2:
+                    sys.exit("::error::pkg-versions.txt 第 %d 行应为 <包名> <版本>: %s" % (lineno, ln))
+                want.append((f[0], f[1]))
+            if not want:
+                print("pkg-versions.txt 里没有生效的条目")
+
+        def sha256(path):
+            h = hashlib.sha256()
+            with open(path, "rb") as fp:
+                for blk in iter(lambda: fp.read(1 << 20), b""):
+                    h.update(blk)
+            return h.hexdigest()
+
+        done = []
+        for pkg, ver in want:
+            mks = glob.glob("feeds/*/*/%s/Makefile" % pkg) or glob.glob("feeds/*/*/*/%s/Makefile" % pkg)
+            if not mks:
+                sys.exit("::error::feeds 里找不到软件包 %s" % pkg)
+            mk = mks[0]
+            feed = mk.split("/")[1]
+            body = open(mk, encoding="utf-8").read()
+
+            if re.search(r"^PKG_SOURCE_PROTO:=\s*git", body, re.M):
+                sys.exit("::error::%s 是 git 源，本机制只支持 tarball 源"
+                         "（git 源要改的是 PKG_SOURCE_VERSION 与 PKG_MIRROR_HASH）" % pkg)
+            m = re.search(r"^PKG_VERSION:=(.*)$", body, re.M)
+            if not m:
+                sys.exit("::error::%s 的 Makefile 里没有 PKG_VERSION" % pkg)
+            if not re.search(r"^PKG_HASH:=", body, re.M):
+                sys.exit("::error::%s 的 Makefile 里没有 PKG_HASH" % pkg)
+            cur = m.group(1).strip()
+            if cur == ver:
+                print("%-18s 已经是 %s，跳过" % (pkg, ver))
+                continue
+
+            print("%-18s %s -> %s" % (pkg, cur, ver))
+            # 先以 skip 下载一次，拿到实际 tarball 才能算出正确的 PKG_HASH
+            draft = re.sub(r"^PKG_VERSION:=.*$", "PKG_VERSION:=" + ver, body, count=1, flags=re.M)
+            draft = re.sub(r"^PKG_HASH:=.*$", "PKG_HASH:=skip", draft, count=1, flags=re.M)
+            open(mk, "w", encoding="utf-8").write(draft)
+
+            target = "package/feeds/%s/%s/download" % (feed, pkg)
+            before = set(os.listdir("dl")) if os.path.isdir("dl") else set()
+            r = subprocess.run(["make", target, "V=s"], capture_output=True, text=True)
+            if r.returncode != 0:
+                print(r.stdout[-3000:])
+                print(r.stderr[-3000:])
+                sys.exit("::error::%s %s 下载失败，多半是上游没有这个 tag" % (pkg, ver))
+
+            got = [g for g in sorted(set(os.listdir("dl")) - before) if not g.endswith(".hash")]
+            src = re.search(r"^PKG_SOURCE:=(.*)$", draft, re.M)
+            if src:
+                exp = src.group(1).strip().replace("$(PKG_NAME)", pkg).replace("$(PKG_VERSION)", ver)
+                got = [g for g in got if g == exp] or got
+            if len(got) != 1:
+                sys.exit("::error::%s 下载后无法确定主源码包: %s" % (pkg, " ".join(got) or "(无新文件)"))
+
+            digest = sha256(os.path.join("dl", got[0]))
+            open(mk, "w", encoding="utf-8").write(
+                re.sub(r"^PKG_HASH:=.*$", "PKG_HASH:=" + digest, draft, count=1, flags=re.M))
+            # 写回真实哈希后再跑一次，确认校验能过
+            if subprocess.run(["make", target], capture_output=True, text=True).returncode != 0:
+                sys.exit("::error::%s 写回 PKG_HASH 后校验失败" % pkg)
+            print("  %s  sha256=%s" % (got[0], digest))
+            done.append((pkg, cur, ver))
+
+        note = ["- %s：`%s` → `%s`" % d for d in done] or ["- 本次未覆盖任何软件包版本"]
+        with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as f:
+            f.write("PKG_VER_NOTE<<PKGVEREOF\n" + "\n".join(note) + "\nPKGVEREOF\n")
+        PY
+
     - name: Download DL Package(下载DL软件包)
       run: |
         cd $OPENWRT_PATH
@@ -487,6 +575,9 @@ jobs:
           ### 🧩 附加软件包
           ${{ env.EXTRA_NOTE }}
           - 想加装别的软件包：在[选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/)勾选后复制包名串，粘进本 workflow 的 `extra_packages` 输入重新编译
+          ### 🔖 软件包版本覆盖
+          ${{ env.PKG_VER_NOTE }}
+          - 由仓库里的 `config/pkg-versions.txt` 控制，编译前改写 feed 的 `PKG_VERSION` 并自动重算 `PKG_HASH`
           ### ✂️ 默认不带代理与去广告
           - Passwall / OpenClash / AdGuardHome / SmartDNS 都不在默认固件里 —— 它们很个人化，且占了原固件八成体积
           - 需要就去选包页勾，重编一次即可。要搜：`luci-app-passwall` `xray-core` `sing-box` `geoview` / `luci-app-openclash` `ruby` `ruby-yaml` / `luci-app-adguardhome` `adguardhome` / `smartdns` `luci-app-smartdns`

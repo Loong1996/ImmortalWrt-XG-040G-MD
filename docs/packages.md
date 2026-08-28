@@ -118,7 +118,7 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 两点提醒。**自建固件混用官方源不是官方支持的用法**——纯脚本包基本没事，带 `.so` 的包可能因为 base 不同步出问题，所以黄档写的是"多半能装"而不是打包票。另外这套标记只是把"装的时候才发现缺"提前到"选包的时候就看见"，**并没有省掉事先判断这个动作**；真想一劳永逸，得在配置里开 `CONFIG_ALL_KMODS=y` 把 1400 多个 kmod 全编出来，代价是编译时间大涨。
 
-**编进固件的版本只能看，不能指定**（事后 `apk add` 装的本体是另一回事，见上一段）。`.config` 里软件包只有开关位（`CONFIG_PACKAGE_xxx=y`），没有版本位，编出来是哪个版本完全取决于 `feeds update` 那一刻各 feed 仓库的 HEAD。唯一能控版本的层级是整个 feed（`feeds.conf.default` 里给 `src-git` 加 `^提交号` 后缀），粒度粗到没法当"指定版本"用。
+**选包页上显示的版本只能看，不能在这里指定**（事后 `apk add` 装的本体是另一回事，见上一段）。`.config` 里软件包只有开关位（`CONFIG_PACKAGE_xxx=y`），没有版本位，编出来是哪个版本取决于 `feeds update` 那一刻各 feed 仓库的 HEAD。要钉死某个包的版本，见下方[指定软件包版本](#指定软件包版本)。
 
 ## 刷新索引（不用编译）
 
@@ -133,3 +133,46 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 * Passwall 与 OpenClash **不要同时启用**，两者都会接管 nftables 规则链与 dnsmasq 配置
 * dnsmasq / SmartDNS / AdGuardHome 默认均监听 53 端口，刷机后需手动规划端口分配
 * 不在官方 feed 中的第三方插件，需在 workflow 的 `Install Feeds` 步骤前添加克隆步骤
+
+## 指定软件包版本
+
+版本写在 feed 的包 Makefile 里，不在 `.config`。[`config/pkg-versions.txt`](../config/pkg-versions.txt) 用来覆盖它，一行一个 `<包名> <版本>`，两条编译线共用：
+
+```
+sing-box    1.13.19
+xray-core   25.8.3
+```
+
+编译前 workflow 会：
+
+1. 在 `feeds/*/*/<包名>/Makefile` 里定位该包
+2. 改写 `PKG_VERSION`，把 `PKG_HASH` 临时设成 `skip`
+3. 跑一次 `make package/feeds/<feed>/<包名>/download` 把 tarball 拉下来
+4. 算出实际 sha256 写回 `PKG_HASH`，**再跑一次 download 确认校验能过**
+
+所以只填版本号，**不用自己算哈希**。Release 正文的「🔖 软件包版本覆盖」会列出本次改了哪些包。
+
+### 限制
+
+* **只支持 tarball 源。** Makefile 里有 `PKG_SOURCE_PROTO:=git` 的包会直接报错退出 —— 那种要改的是 `PKG_SOURCE_VERSION` 与 `PKG_MIRROR_HASH`，机制不同
+* **版本必须是上游真实存在的 tag**，否则下载 404，构建立刻失败，不会等一两小时编完才发现
+* **跨大版本升级可能编译失败。** feed 里的 Makefile 是按它自带的那个版本写的，build tag、依赖、补丁都不会跟着变
+* 只影响本次编译产物，**不影响刷完机后 `apk` 源里的版本**
+
+### 例：sing-box
+
+immortalwrt feed 锁在 **1.12.25**，而上游正式版已经到 **1.13.19**。Go 工具链这一关不用担心，feed 提供的 `GO_DEFAULT_VERSION` 是 1.27，比谁的要求都高：
+
+| sing-box | go.mod 要求 | 能否编 |
+| --- | --- | --- |
+| 1.12.25（feed 默认） | go 1.23.1 | ✅ |
+| 1.13.19（最新正式） | go 1.24.7 | ✅ |
+| 1.14.0-rc | go 1.25.5 | ✅ |
+
+真正的风险在 build tag —— Makefile 里那十来个 `SING_BOX_TINY_BUILD_*` 对应 sing-box 的 `with_quic`、`with_gvisor` 等 tag，上游增删过的话，多余的 Go 会忽略、缺失的只是功能不开，一般不至于编译失败，但没实测过。另外 1.14 还是 rc，配置格式可能有 breaking change，`luci-app-passwall` 未必跟得上。
+
+查上游有哪些 tag：
+
+```sh
+gh api repos/SagerNet/sing-box/releases --jq '.[].tag_name'
+```
