@@ -127,16 +127,24 @@ jobs:
         #   25.12 线  dts/an7581-bell_xg-040g-md.dts，usable-memory-range 单行
         #   master 线 dts/an758x-nokia_xg-040g-common.dtsi，该属性跨两行书写
         # 因此按内容定位文件，并用容忍空白与换行的正则改写。
+        #
+        # master 线的 dtsi 里 usable 已经固定成 2G，这里改写等于原值；25.12 线仍按档位
+        # 写着精确值，会被一并放大到 2G —— 两条线行为就统一了。
         DTS=$(grep -rl "linux,usable-memory-range" target/linux/airoha/dts/ 2>/dev/null | grep -i "xg-040g" | head -n1)
         [ -n "$DTS" ] || { echo "::error::未找到含 usable-memory-range 的 XG-040G dts"; exit 1; }
         echo "目标文件: $DTS"
 
         case "$DRAM_SIZE" in
-          512M) MEM_SIZE=0x20000000; USABLE_SIZE=0x1fe00000 ;;
-          1G)   MEM_SIZE=0x40000000; USABLE_SIZE=0x3fe00000 ;;
-          2G)   MEM_SIZE=0x80000000; USABLE_SIZE=0x7fe00000 ;;
+          512M) MEM_SIZE=0x20000000 ;;
+          1G)   MEM_SIZE=0x40000000 ;;
+          2G)   MEM_SIZE=0x80000000 ;;
           *)    echo "::error::不支持的 DRAM_SIZE=$DRAM_SIZE"; exit 1 ;;
         esac
+        # usable-memory-range 走 memblock_cap_memory_range()，函数体里全是 remove，
+        # 只能把已注册的内存往少了裁、不会凭空多出来；真正声明容量的是 memory 节点。
+        # 因此它不必跟着档位精确变，固定放到 2G 就对任何一档都不构成裁剪，同时保住
+        # 起点 0x80200000 对 ATF 那 2MB 的早期保护。
+        USABLE_SIZE=0x7fe00000
 
         python3 - "$DTS" "$MEM_SIZE" "$USABLE_SIZE" <<'PY'
         import re, sys
