@@ -42,6 +42,50 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 
 二进制里没有嵌入构建者的用户名或主机名。U-Boot 是 GPLv2，如需源码可向分发方索取。
 
+## tcboot 的板级来源：Airoha EVB，不是本设备
+
+解出 U-Boot 内嵌的 DTB（6032 字节）后，`model` 与 `compatible` 说明了一切：
+
+```
+model      = "Airoha EN7581 Evaluation Board"
+compatible = "airoha,en7581-evb", "airoha,en7581"
+```
+
+**它用的是 Airoha 官方评估板的板级配置，不是 `nokia,xg-040g-md`**，整个二进制里也没有一处 `openwrt` / `immortalwrt` 字样。所以 **tcboot 不是从 OpenWrt 的 `uboot-airoha`（即 `ubi` 变体那个）改出来的** —— 后者是 `bl2 128K + ubi 255.875M`，布局完全不同，两者各走各的。
+
+因果关系其实是反过来的：**tcboot 变体的分区表就写在 EVB 的 DTB 里**，本项目的 DTS 是按它反向对齐的。
+
+```
+partitions {
+    bootloader@0    reg = <0x0      0x80000>    label = "bootloader"
+    ubootenv@80000  reg = <0x80000  0x80000>    label = "env"
+    ubi@100000      reg = <0x100000 0x0>        ← size=0，吃掉剩余全部
+}
+```
+
+DTB 里确实带了 AN7581 该有的东西（NPU 的五段 `reserved-memory`、`atf-reserved-memory@80000000` 256K、PCS、switch、`airoha,en7581-snand`），但**设备级的东西一个都没有**。
+
+### 一个根因解释四个怪现象
+
+本文档记录的几个 tcboot 特有行为，原先看着是孤立瑕疵，其实都是同一个病因 ——「EVB 通用配置没有为这台设备适配」：
+
+| 现象 | 根因 |
+| --- | --- |
+| `bootargs` 里 `root=/dev/ubiblock0_1` 按卷号硬编码 | EVB 通用配置，未做设备定制 |
+| MAC 只能靠 preinit 从 ubi 的 `ri` 卷读 | EVB 的 DTB 里根本没有 nvmem / MAC 节点 |
+| `memory` 写死 512M（`0x80000000` + `0x20000000`） | EVB 默认值，全靠 `bootm` 时 fixup 覆盖 |
+| `env` 分区从未被写过、CRC 无效 | DTB 里定义了 512K，但 EVB 的默认环境是编译进去的 |
+
+> 💡 以后再遇到 tcboot 的异常行为，第一反应应该是「EVB 的配置里有没有这东西」，而不是当成单独的 bug 去查。
+
+### 网络栈：uIP，不是 lwIP
+
+HTTP 响应头里是 `Server: uIP/0.9`。这说明作者是把 [u-boot_mod](https://github.com/pepe2k/u-boot_mod) 的 `httpd` 模块**连同 uIP 协议栈整体搬到了 U-Boot 2025.01**，而不是基于 U-Boot 自己的网络栈重写 —— u-boot_mod 基于的老 U-Boot 没有 TCP，所以自带了 uIP。
+
+对「要不要给 `ubi` 变体补一个同样的网页救砖」而言这是好消息：uIP 是自包含实现，只依赖底层收发包接口，移植面很窄；而且 tcboot 已经证明这套代码能在 U-Boot 2025.01 + AN7581 上跑通。
+
+另外，tcboot 的 U-Boot 里可用的网络命令只有 `bootp` / `dhcp` / `httpd` / `ping` / `tftpboot` / `tftpput` —— **没有 `tftpsrv`**（`CONFIG_CMD_TFTPSRV` 未启用）。
+
 **网页救砖入口**：按住 reset 键上电，U-Boot 会在 `192.168.1.1` 启动 HTTP 服务器，提供三个上传端点 —— `firmware`（整机固件）、`spinand`（裸 flash）、`uboot`（引导本身）。这是比串口方便得多的恢复方式。
 
 **内置默认环境**（`env` 分区 CRC 无效时 U-Boot 使用的值）：
