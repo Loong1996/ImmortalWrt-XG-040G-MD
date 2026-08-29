@@ -11,6 +11,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | 文档 | 内容 |
 | --- | --- |
 | [源码分支与跟进上游](docs/branches.md) | 两条编译线的差异、25.12 为什么固定在快照、rebase 流程 |
+| [本地编译](docs/local-build.md) | 不走 Actions，在自己的机器上编：机器要求、完整步骤、增量重编 |
 | [设备变体](docs/variants.md) | 三种分区布局、`tcboot.bin` 引导程序分析、能否互相升级 |
 | [自定义软件包](docs/packages.md) | 内置了哪些包、选包页怎么用、刷完机还能不能补装 |
 | [LED 行为](docs/leds.md) | 面板灯与网口灯的语义、怎么改成自己想要的 |
@@ -33,6 +34,8 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 1. Fork 本仓库，在 Actions 页面启用 workflow
 2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与设备变体即可 —— 内存容量默认[自适应](docs/variants.md#内存容量)，换过颗粒也不用管
 3. 约 1~2 小时后，固件发布在本仓库的 Releases 中
+
+手头有闲置的 Linux 机器，想反复改内核补丁或抓完整编译日志，可以不走 Actions：装好依赖后 `./build.sh` 一条命令即可，参数与 `Run workflow` 的输入一一对应 —— 见[本地编译](docs/local-build.md)。
 
 **分支选择建议：`master-XG-040G-MD`（默认）**
 

@@ -1,0 +1,246 @@
+# 本地编译
+
+不走 GitHub Actions，在自己的机器上编出同样的固件。
+
+`.github/workflows/xg-040g-md-immortalwrt.yml` 里除了「合并磁盘」「缓存工具链」「发 Release」这三件 CI 专属的事，其余步骤都是标准的 OpenWrt 源码树操作，本地可以完整复现。
+
+**什么时候值得这么做**：需要反复改内核补丁、调 DTS、抓 `V=s` 完整日志时。CI 每次都是冷启动，改一行也要重编一两个小时；本地第二次起走增量，通常几分钟。像 [USB2 口带不动 USB3 U 盘](usb2-port-issue.md) 这类要反复试补丁的问题，本地编译基本是必需的。
+
+**什么时候不必**：只是想要一份能刷的固件、或只是想换几个软件包 —— 直接用 [选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/) 加 `Run workflow` 更省事。
+
+## 一、机器要求
+
+| | 最低能跑 | 建议 |
+| --- | --- | --- |
+| 系统 | Linux x86_64 | **Ubuntu Server 24.04 LTS**（不要用 26.04，见下） |
+| 内存 | 4 GB + 4 GB swap，限制 `make -j2` | **8 GB**（4 核）/ 16 GB（8 核以上） |
+| 磁盘 | 40 GB 空闲 | **80~100 GB，SSD** |
+| CPU | 2 核（首次 4~6 小时） | 4 核以上（首次 1.5~2 小时） |
+
+**系统**：必须是 Linux x86_64。macOS 的文件系统默认大小写不敏感，OpenWrt 构建会在解包阶段就出错；Windows 同理，都得走虚拟机或 Docker。Server 版即可，`make menuconfig` 是 ncurses 界面，SSH 进去就能用，桌面环境白占 1~2 GB 内存。
+
+> ⚠️ **版本要选 24.04 LTS，不要用更新的。** Ubuntu 官网首页默认推最新版，LTS 要去 <https://releases.ubuntu.com/24.04/> 单独下 `ubuntu-24.04.x-live-server-amd64.iso`。
+>
+> 26.04 上实测第一步就过不去 —— ImmortalWrt 的 `init_build_environment.sh` 按发行版**代号**白名单判断，命中不了就直接退出：
+>
+> ```
+> [ERROR] Unsupported OS, use Ubuntu 20.04 instead.
+> ```
+>
+> 目前认的代号只有 `bionic`(18.04)、`focal`(20.04)、`jammy`(22.04)、`noble`(24.04) 与 Debian 的 `buster`/`bullseye`/`bookworm`/`trixie`；26.04 的代号不在其中。它还要求 `x86_64`，ARM 机器同样会被拒。
+>
+> 更实质的理由是编译器：26.04 带的 GCC 已是 15 及以上，而 OpenWrt `tools/` 下那批 host 工具（m4、autoconf、elfutils 等）的源码通常滞后于最新编译器，容易在 `-Werror` 上中断，且要一个个单独打补丁绕开。选 24.04 同时也贴近 workflow 里 `ubuntu-latest` 的环境，少一层「新 GCC/glibc 导致某个包编不过」的变量。
+
+**内存**决定的是并行度而非能否编译。峰值约每个并行任务 1.5~2 GB（链接内核和大型 C++ 包时最高），所以**可用 `-j` 数 ≈ 内存 GB ÷ 2**。4 GB 机器就老实用 `make -j2`：`make -j$(nproc)` 撑爆内存时，OOM killer 会在编译中途杀掉 gcc，报出的错看不出是内存问题，白等几小时。CI 上的 runner 是 4 核 16 GB。
+
+**磁盘** 40 GB 的构成：源码树含 `.git` 约 1.5 GB、`dl/` 上游 tarball 2~4 GB、`build_dir/` + `staging_dir/` + 工具链 25~30 GB、产物 `bin/` 不到 1 GB。建议给到 80 GB 是因为两个变量：三个设备变体和两条源码线若各留一棵树互不干扰（推荐，省得反复 `make clean`），每棵都要 30 GB；选包页勾了 sing-box、xray-core、adguardhome 这类 Go 包的话，要现编 Go 工具链，`build_dir` 再涨 10~15 GB。用 SSD —— OpenWrt 编译是海量小文件读写，机械盘耗时翻倍不止。
+
+## 二、两个仓库
+
+| 仓库 | 作用 | 体积 |
+| --- | --- | --- |
+| [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt) | 源码树，编译在这里跑。**补丁已内置在分支中** | 编完约 30 GB |
+| 本仓库 | 只提供 `config/*.config` | clone 后 10 MB |
+
+本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`snapshots/` 与编译无关。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
+
+推荐 clone 本仓库而不是只拷一个 `.config`：配置会随项目更新，`git pull` 就能同步，只拷文件很容易编出一份和 CI 不一致的固件却不自知。
+
+## 三、完整步骤
+
+以默认组合 `master-XG-040G-MD` + `tcboot` 变体为例。**全程不要用 root 用户** —— OpenWrt 构建系统会直接拒绝执行。
+
+> 💡 **这一章的全部步骤已封装成仓库根目录的 [`build.sh`](../build.sh)。** 装好第 1 步的依赖后：
+>
+> ```bash
+> git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
+> cd ImmortalWrt-XG-040G-MD
+> ./build.sh                          # master 线 + tcboot 变体
+> ./build.sh -v ubi -j 4              # 换变体、限制并行度
+> ./build.sh -p "luci-app-passwall"   # 附加软件包，格式同选包页
+> ./build.sh -h                       # 全部参数
+> ```
+>
+> 参数与 `Run workflow` 的输入一一对应：
+>
+> | 脚本参数 | workflow 输入 | 默认 |
+> | --- | --- | --- |
+> | `-b, --branch` | 编译分支 | `master-XG-040G-MD` |
+> | `-v, --variant` | 设备变体 | `tcboot` |
+> | `-d, --dram` | 内存容量 | `auto` |
+> | `-p, --packages` | 附加软件包 | 空 |
+> | `-j, --jobs` | （CI 用 `nproc`） | CPU 与内存推算的较小值 |
+> | `-o, --src-dir` | — | 本仓库同级的 `openwrt-<分支>` |
+> | `--update` | — | 不加则**不动**已有源码树，避免覆盖你本地的调试修改 |
+> | `--menuconfig` `--clean` `--config-only` | — | — |
+>
+> 脚本做的事和下面逐条列出的完全一致，包含那两处必要的核对。想知道每一步在做什么、或需要手工介入调试时，照下面的手动流程走。
+
+### 1. 装依赖
+
+```bash
+sudo bash -c 'bash <(curl -sL https://build-scripts.immortalwrt.org/init_build_environment.sh)'
+sudo apt -y install dos2unix libfuse-dev
+```
+
+这就是 workflow 里「初始化环境」那一步的原文。用官方脚本而不是手写 apt 列表，是为了和 CI 装的依赖完全一致；ImmortalWrt 上游调整依赖时也会跟着变。
+
+脚本报 `Unsupported OS` 说明系统版本不在它的白名单里（见第一章的说明）。**正确的处理是换成 24.04**，而不是绕过检查 —— 拒绝你的那个版本判断，和后面 GCC 太新编不过是同一个原因。
+
+只在系统版本确实受支持、但你不想让脚本改动 apt 源和 GCC 版本时，才用手动装依赖代替：
+
+```bash
+sudo apt update
+sudo apt install -y build-essential clang flex bison g++ gawk \
+  gcc-multilib g++-multilib gettext git libncurses-dev libssl-dev \
+  python3 python3-dev python3-setuptools rsync swig unzip zlib1g-dev \
+  file wget time ccache libelf-dev zstd dos2unix libfuse-dev
+```
+
+这是 OpenWrt 官方文档给 Ubuntu 的依赖集，加上 workflow 额外装的 `dos2unix` 与 `libfuse-dev`。真缺什么，`make -j1` 会明确报出缺哪个头文件或命令，不会白编几小时。
+
+### 2. 拉两个仓库
+
+```bash
+mkdir -p ~/build && cd ~/build
+git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
+git clone https://github.com/Loong1996/immortalwrt.git -b master-XG-040G-MD openwrt
+cd openwrt
+```
+
+25.12 线把分支换成 `-b openwrt-25.12-XG-040G-MD`。两条线的差异见[源码分支与跟进上游](branches.md)。
+
+### 3. feeds
+
+```bash
+./scripts/feeds update -a
+./scripts/feeds install -a
+```
+
+### 4. 配置
+
+分支与变体决定用哪份配置、写哪个设备符号，对应关系和 workflow 的「生成变量」一步一致：
+
+| 源码分支 | 配置文件 | `device_variant` | 设备符号 |
+| --- | --- | --- | --- |
+| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `tcboot`（默认） | `nokia_xg-040g-md-tcboot` |
+| `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
+| `master-XG-040G-MD` | 同上 | `ubi` | `nokia_xg-040g-md-ubi` |
+| `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
+
+```bash
+DEVICE_SYMBOL=nokia_xg-040g-md-tcboot
+cp ../ImmortalWrt-XG-040G-MD/config/xg-040g-md-master.config .config
+
+# 先清掉配置里所有 an7581 设备行，再插入选中的那个
+sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+
+make defconfig
+
+# 必须有输出，否则该分支里根本没有这个设备
+grep "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+```
+
+最后那行 `grep` 不是走形式。`make defconfig` 遇到当前源码树里不存在的符号会**静默删掉**对应行，不报任何错；漏掉这次核对，就要等一两小时编完、发现产物文件名不对才知道选错了变体。workflow 里同样在 `defconfig` 前后各查一次。
+
+各变体的分区布局、刷机方式与能否回退原厂，见[设备变体](variants.md)。
+
+### 5. 附加软件包（可选）
+
+选包页生成的那串包名，本地就是直接改 `.config`：包名前无 `-` 表示编入固件，有 `-` 表示从基础配置中剔除。
+
+```bash
+# 加装
+echo "CONFIG_PACKAGE_luci-app-passwall=y" >> .config
+# 剔除
+echo "# CONFIG_PACKAGE_luci-app-ttyd is not set" >> .config
+
+make defconfig
+grep "^CONFIG_PACKAGE_luci-app-passwall=y" .config    # 同样要核对
+```
+
+改完必须重跑 `make defconfig` 补全依赖。核对一遍的理由和上面相同 —— 包名拼错、或该分支根本没有这个包时，`defconfig` 会安静地把那行丢掉。哪些包能选、刷完机后还能不能 `apk add` 补装，见[自定义软件包](packages.md)。
+
+### 6. 内存容量（一般不用管）
+
+默认「自适应」：DTS 的 `memory` 节点留 512M 保底，实际容量由引导程序探测后写进 DTB，512M / 1G / 2G 机器刷同一份固件。**本地编译什么都不用做就是这个行为。**
+
+只有 `stock` 变体（用原厂引导，是否做 fixup 未经验证）且换过颗粒时，才需要按 workflow「修改内存容量」一步手动改写 DTS 的 `reg` 与 `linux,usable-memory-range`。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
+
+### 7. 编译
+
+```bash
+make download -j8
+find dl -size -1024c -delete      # 清掉下载失败的残缺文件
+
+make -j$(nproc)                   # 内存不足时改成 -j2 / -j4
+```
+
+编译失败要看清楚错在哪时，按 workflow 的兜底顺序重跑：
+
+```bash
+make -j1 V=s
+```
+
+单线程加 `V=s` 输出完整命令行，日志不会被并行任务打乱。这一步慢，但只重编失败的那个包，不会从头来。
+
+## 四、产物
+
+```bash
+ls bin/targets/airoha/an7581/
+```
+
+关注哪几个文件取决于变体：
+
+| 变体 | 刷机用文件 |
+| --- | --- |
+| `tcboot` | `*-sysupgrade.bin`（可从 25.12 线固件直接 sysupgrade） |
+| `stock` | `factory-kernel.bin` + `factory-rootfs.bin` |
+| `ubi` | `preloader.bin` + `bl31-uboot.fip`（USB-TTL 刷入）、`*-recovery.itb` 救援镜像 |
+
+`bin/packages/` 下是本次编出的全部 `.apk`，刷完机后补装软件包用得上 —— workflow 会把它打包成 `Packages.tar.gz` 传进 Release，本地直接从这个目录取即可。
+
+## 五、增量重编
+
+本地相对 CI 的真正优势在这里。`build_dir/` 与 `staging_dir/` 都在，改动后只重编受影响的部分：
+
+```bash
+# 改了某个包的源码或 Makefile
+make package/luci-app-airoha-npu/{clean,compile} -j$(nproc)
+
+# 改了内核补丁或 DTS
+make target/linux/{clean,compile} -j$(nproc)
+
+# 重新打包固件（不重编）
+make -j$(nproc)
+```
+
+几个 clean 的层级，别用错：
+
+| 命令 | 清掉什么 | 下次编译耗时 |
+| --- | --- | --- |
+| `make clean` | `build_dir/target-*` 与 `bin/`，保留工具链 | 30~60 分钟 |
+| `make dirclean` | 连工具链一起清 | 和首次一样，1~2 小时 |
+| `make distclean` | 再加上 `dl/` 和 `.config` | 最慢，几乎不需要 |
+
+日常改代码用 `make target/linux/clean` 或 `make package/<name>/clean` 这种带路径的就够了，**不要动不动 `make dirclean`** —— 工具链重编是这里面最耗时的部分，而它几乎从不需要重来。
+
+换设备变体或换源码分支时不必 clean，改完 `.config` 重跑 `make defconfig` 再 `make` 即可；`dl/` 目录可以在多棵源码树之间共享（软链过去），省一次几 GB 的下载。
+
+## 六、与 CI 的差异
+
+本地跳过的步骤，以及为什么不需要：
+
+| workflow 步骤 | 本地 |
+| --- | --- |
+| 合并磁盘 `maximize-build-space` | 不需要，机器磁盘本来就够 |
+| 缓存工具链 `cachewrtbuild` | 不需要，本地天然增量 |
+| 覆盖软件包版本 | 跳过，`pkg-versions.txt` 当前无有效行 |
+| 先编被覆盖的包 | 同上，无覆盖则不触发 |
+| 整理文件 / 发布 Release / 更新选包页索引 | CI 专属，与固件内容无关 |
+
+**产物是否等价**：以上跳过的步骤都不改变编译输入，同一分支、同一份 `.config`、同一变体编出的固件功能一致。二进制不会逐字节相同（时间戳、构建路径、编译器次版本差异），这属正常。
+
+想让本地编译再快一点，可以在 `make menuconfig` 里开 `Advanced configuration options → Use ccache`，反复重编同一棵树时命中率很高。CI 上刻意关掉了（`ccache: false`），因为每次都是全新环境，缓存没有意义。

@@ -1,0 +1,329 @@
+#!/usr/bin/env bash
+#
+# XG-040G-MD 本地编译脚本
+#
+# 参数与 .github/workflows/xg-040g-md-immortalwrt.yml 的 Run workflow 输入一一对应，
+# 目的是让本地编译和 CI 编出同样的固件。用法见 docs/local-build.md。
+#
+#   ./build.sh                                  # master 线 + tcboot 变体
+#   ./build.sh -v stock                         # 换设备变体
+#   ./build.sh -b openwrt-25.12-XG-040G-MD      # 换源码分支
+#   ./build.sh -p "luci-app-passwall -luci-app-ttyd"   # 选包页生成的那串
+#
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_URL="https://github.com/Loong1996/immortalwrt.git"
+
+# 默认值与 workflow 的 workflow_dispatch 默认输入保持一致
+BRANCH="master-XG-040G-MD"
+VARIANT="tcboot"
+DRAM_SIZE="auto"
+EXTRA_PACKAGES=""
+SRC_DIR=""
+JOBS=""
+DO_UPDATE=0
+DO_MENUCONFIG=0
+DO_CLEAN=0
+CONFIG_ONLY=0
+
+die() { echo "错误: $*" >&2; exit 1; }
+info() { echo -e "\033[1;32m==>\033[0m $*"; }
+warn() { echo -e "\033[1;33m警告:\033[0m $*" >&2; }
+
+usage() {
+    cat <<'EOF'
+用法: ./build.sh [选项]
+
+  -b, --branch <分支>     源码分支，默认 master-XG-040G-MD
+                          可选 openwrt-25.12-XG-040G-MD 等
+  -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 tcboot
+                          （25.12 线只有一个设备，此项被忽略）
+  -d, --dram <容量>       内存容量 auto|512M|1G|2G，默认 auto（自适应）
+  -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除
+  -j, --jobs <n>          并行度，默认按 CPU 与内存自动取较小值
+  -o, --src-dir <路径>    源码树位置，默认 <本仓库同级>/openwrt-<分支>
+      --update            已存在的源码树执行 git pull 与 feeds update
+                          （默认不动，以免覆盖你本地的调试修改）
+      --menuconfig        defconfig 之后进入 menuconfig 手动调整
+      --clean             编译前 make clean（保留工具链）
+      --config-only       只做到配置生成，不编译
+  -h, --help              显示本帮助
+
+示例:
+  ./build.sh -v ubi -j 4
+  ./build.sh -b openwrt-25.12-XG-040G-MD
+  ./build.sh -p "luci-app-openclash ruby ruby-yaml"
+EOF
+}
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -b|--branch)    BRANCH="${2:?缺少分支名}"; shift 2 ;;
+        -v|--variant)   VARIANT="${2:?缺少变体名}"; shift 2 ;;
+        -d|--dram)      DRAM_SIZE="${2:?缺少容量}"; shift 2 ;;
+        -p|--packages)  EXTRA_PACKAGES="${2:-}"; shift 2 ;;
+        -j|--jobs)      JOBS="${2:?缺少并行度}"; shift 2 ;;
+        -o|--src-dir)   SRC_DIR="${2:?缺少路径}"; shift 2 ;;
+        --update)       DO_UPDATE=1; shift ;;
+        --menuconfig)   DO_MENUCONFIG=1; shift ;;
+        --clean)        DO_CLEAN=1; shift ;;
+        --config-only)  CONFIG_ONLY=1; shift ;;
+        -h|--help)      usage; exit 0 ;;
+        *)              usage >&2; die "未知选项: $1" ;;
+    esac
+done
+
+# ---------------------------------------------------------------- 环境检查
+
+[ "$(uname -s)" = "Linux" ] || die "只支持 Linux。macOS 的文件系统默认大小写不敏感，OpenWrt 解包阶段就会出错"
+[ "$(id -u)" -ne 0 ] || die "不要用 root 运行 —— OpenWrt 构建系统会拒绝执行"
+
+for c in git make gcc python3 curl; do
+    command -v "$c" >/dev/null || die "缺少 $c，请先执行 docs/local-build.md 第三章第 1 步安装依赖"
+done
+
+# ImmortalWrt 的 init_build_environment.sh 按发行版代号白名单判断，26.04 这类新版
+# 会被直接拒（Unsupported OS）。更实质的是新 GCC 会让 tools/ 下的 host 工具在
+# -Werror 上中断。这里只提醒不拦截 —— 依赖你若已自行处理妥当，仍可继续。
+CODENAME="$(. /etc/os-release 2>/dev/null && echo "${VERSION_CODENAME:-}" || true)"
+case "$CODENAME" in
+    noble|jammy|focal|bionic|bookworm|bullseye|buster|trixie) ;;
+    *) warn "发行版代号 ${CODENAME:-未知} 不在 ImmortalWrt 依赖脚本的支持列表内，建议 Ubuntu 24.04 (noble)。详见 docs/local-build.md 第一章" ;;
+esac
+
+if [ "$(uname -m)" != "x86_64" ]; then
+    warn "架构 $(uname -m) 非 x86_64，官方依赖脚本不支持，需自行确认依赖齐全"
+fi
+
+# 并行度：峰值约每任务 1.5~2 GB，撑爆内存时 OOM killer 会在编译中途杀掉 gcc，
+# 报出的错看不出是内存问题。所以默认取「CPU 核数」与「内存 GB ÷ 2」的较小值。
+NPROC="$(nproc)"
+MEM_GB=$(($(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024))
+SAFE_JOBS=$(( MEM_GB / 2 ))
+if [ "$SAFE_JOBS" -lt 1 ]; then SAFE_JOBS=1; fi
+if [ -z "$JOBS" ]; then
+    JOBS=$(( NPROC < SAFE_JOBS ? NPROC : SAFE_JOBS ))
+    if [ "$JOBS" -lt "$NPROC" ]; then
+        warn "内存 ${MEM_GB} GB，并行度从 $NPROC 降到 $JOBS（每任务约需 2 GB）"
+    fi
+elif [ "$JOBS" -gt "$SAFE_JOBS" ]; then
+    warn "指定的 -j $JOBS 超过内存建议值 $SAFE_JOBS（${MEM_GB} GB），可能触发 OOM"
+fi
+
+# ---------------------------------------------------------- 分支与变体映射
+
+# 与 workflow「生成变量」一步的 case 完全一致，含 master 线的前缀匹配
+case "$BRANCH" in
+    master-XG-040G-MD*|xpon-test)
+        CONFIG_FILE="config/xg-040g-md-master.config"
+        case "$VARIANT" in
+            tcboot) DEVICE_SYMBOL="nokia_xg-040g-md-tcboot" ;;
+            stock)  DEVICE_SYMBOL="nokia_xg-040g-md" ;;
+            ubi)    DEVICE_SYMBOL="nokia_xg-040g-md-ubi" ;;
+            *)      die "不支持的变体: $VARIANT（可选 tcboot|stock|ubi）" ;;
+        esac
+        ;;
+    *)
+        CONFIG_FILE="config/xg-040g-md.config"
+        DEVICE_SYMBOL="bell_xg-040g-md"
+        [ "$VARIANT" = "tcboot" ] || warn "25.12 线只有 bell_xg-040g-md 一个设备，已忽略 --variant $VARIANT"
+        VARIANT="tcboot"
+        ;;
+esac
+
+case "$DRAM_SIZE" in
+    auto|512M|1G|2G) ;;
+    *) die "不支持的内存容量: $DRAM_SIZE（可选 auto|512M|1G|2G）" ;;
+esac
+
+[ -f "$REPO_ROOT/$CONFIG_FILE" ] || die "未找到配置文件 $REPO_ROOT/$CONFIG_FILE"
+[ -n "$SRC_DIR" ] || SRC_DIR="$(dirname "$REPO_ROOT")/openwrt-$BRANCH"
+
+info "分支 $BRANCH ／ 变体 $VARIANT ／ 设备 $DEVICE_SYMBOL"
+info "配置 $CONFIG_FILE ／ 内存 $DRAM_SIZE ／ 并行 -j$JOBS"
+info "源码 $SRC_DIR"
+
+# 磁盘：build_dir + staging_dir + 工具链约 30 GB，编到一半没空间很难收拾
+CHECK_DIR="$SRC_DIR"; [ -d "$CHECK_DIR" ] || CHECK_DIR="$(dirname "$SRC_DIR")"
+AVAIL_GB=$(( $(df -Pk "$CHECK_DIR" | awk 'NR==2{print $4}') / 1024 / 1024 ))
+[ "$AVAIL_GB" -ge 25 ] || die "$CHECK_DIR 只剩 ${AVAIL_GB} GB，至少需要 40 GB"
+[ "$AVAIL_GB" -ge 40 ] || warn "$CHECK_DIR 只剩 ${AVAIL_GB} GB，建议 40 GB 以上"
+
+# -------------------------------------------------------------- 获取源码
+
+if [ ! -d "$SRC_DIR/.git" ]; then
+    info "克隆源码（补丁已内置在分支中，不需要另外打补丁）"
+    git clone "$REPO_URL" -b "$BRANCH" "$SRC_DIR"
+    DO_UPDATE=1    # 新树必须装 feeds
+elif [ "$DO_UPDATE" = "1" ]; then
+    info "更新源码树"
+    git -C "$SRC_DIR" pull --ff-only
+else
+    info "源码树已存在，保持原样（要更新加 --update）"
+fi
+
+cd "$SRC_DIR"
+git --no-pager log -1 --date=short --format="    当前 HEAD: %h %cd %s"
+
+# ------------------------------------------------------------ 内存容量改写
+
+# 默认 auto 不动 DTS：memory 节点留 512M 保底，实际容量由引导程序探测后写进 DTB，
+# 512M / 1G / 2G 机器刷同一份固件。只有 stock 变体换过颗粒才需要写死。
+if [ "$DRAM_SIZE" != "auto" ]; then
+    info "改写 DTS 内存容量为 $DRAM_SIZE"
+    DTS="$(grep -rl "linux,usable-memory-range" target/linux/airoha/dts/ 2>/dev/null | grep -i "xg-040g" | head -n1)"
+    [ -n "$DTS" ] || die "未找到含 usable-memory-range 的 XG-040G dts"
+    case "$DRAM_SIZE" in
+        512M) MEM_SIZE=0x20000000 ;;
+        1G)   MEM_SIZE=0x40000000 ;;
+        2G)   MEM_SIZE=0x80000000 ;;
+    esac
+    # usable-memory-range 走 memblock_cap_memory_range()，只能往少了裁、不会凭空多出来，
+    # 固定放到 2G 对任何一档都不构成裁剪，同时保住起点 0x80200000 对 ATF 那 2MB 的保护
+    python3 - "$DTS" "$MEM_SIZE" 0x7fe00000 <<'PY'
+import re, sys
+path, mem, usable = sys.argv[1], sys.argv[2], sys.argv[3]
+s = open(path, encoding="utf-8").read()
+s, n1 = re.subn(r"(reg\s*=\s*<0x0\s+0x80000000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
+                lambda m: m.group(1) + mem + m.group(2), s)
+s, n2 = re.subn(r"(linux,usable-memory-range\s*=\s*<0x0\s+0x80200000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
+                lambda m: m.group(1) + usable + m.group(2), s)
+if n1 != 1 or n2 != 1:
+    sys.exit("替换次数异常 memory=%d usable=%d（期望各 1 次）" % (n1, n2))
+open(path, "w", encoding="utf-8").write(s)
+print("    已改写 %s" % path)
+PY
+fi
+
+# ---------------------------------------------------------------- feeds
+
+if [ "$DO_UPDATE" = "1" ] || [ ! -d package/feeds ]; then
+    info "安装 feeds"
+    ./scripts/feeds update -a
+    ./scripts/feeds install -a
+else
+    info "跳过 feeds 更新（要更新加 --update）"
+fi
+
+# ---------------------------------------------------------------- 配置
+
+info "生成配置"
+cp "$REPO_ROOT/$CONFIG_FILE" .config
+
+# 先清掉配置里所有 an7581 设备行，再插入选中的那个
+sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
+sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+    || die "设备符号写入失败: $DEVICE_SYMBOL"
+
+# 附加软件包：pkg 编入固件，-pkg 从基础配置剔除。这里只改写 .config，
+# 依赖交给随后的 defconfig 补全，是否真生效在下一步核对。
+EXTRA_PACKAGES="$EXTRA_PACKAGES" python3 - <<'PY'
+import os, re, sys
+raw = os.environ.get("EXTRA_PACKAGES") or ""
+add, rm, bad = [], [], []
+for t in re.split(r"[\s,]+", raw.strip()):
+    if not t:
+        continue
+    neg = t.startswith("-")
+    n = t[1:] if neg else t
+    if not re.match(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$", n):
+        bad.append(t)
+    elif neg:
+        rm.append(n)
+    else:
+        add.append(n)
+if bad:
+    sys.exit("非法软件包名: %s" % " ".join(bad))
+# 先把该符号已有的行全部删掉，再按意图追加，免得同一个包留下两条互相矛盾的记录
+targets = set(add) | set(rm)
+kept = []
+for ln in open(".config", encoding="utf-8").read().splitlines():
+    m = re.match(r"^(?:# )?CONFIG_PACKAGE_(\S+?)(?:=[ymn]| is not set)\s*(?:#.*)?$", ln)
+    if m and m.group(1) in targets:
+        continue
+    kept.append(ln)
+kept += ["CONFIG_PACKAGE_%s=y" % n for n in add]
+kept += ["# CONFIG_PACKAGE_%s is not set" % n for n in rm]
+open(".config", "w", encoding="utf-8").write("\n".join(kept) + "\n")
+with open(".build-extra.json", "w", encoding="utf-8") as f:
+    import json; json.dump({"add": add, "rm": rm}, f)
+if add or rm:
+    print("    追加: %s" % (" ".join(add) or "(无)"))
+    print("    移除: %s" % (" ".join(rm) or "(无)"))
+PY
+
+make defconfig
+
+if [ "$DO_MENUCONFIG" = "1" ]; then
+    make menuconfig
+fi
+
+# make defconfig 遇到源码树里不存在的符号会静默删行、不报任何错。漏掉这次核对，
+# 就要等一两小时编完、发现产物文件名不对才知道选错了变体或写错了包名。
+grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+    || die "defconfig 后设备符号丢失，$DEVICE_SYMBOL 在分支 $BRANCH 中可能不存在"
+info "已选定设备: $DEVICE_SYMBOL"
+
+python3 - <<'PY'
+import json, os, re, sys
+if not os.path.exists(".build-extra.json"):
+    sys.exit(0)
+want = json.load(open(".build-extra.json"))
+os.remove(".build-extra.json")
+cfg = open(".config", encoding="utf-8").read()
+miss = []
+for n in want["add"]:
+    if not re.search(r"^CONFIG_PACKAGE_%s=[ym]$" % re.escape(n), cfg, re.M):
+        miss.append(n)
+for n in want["rm"]:
+    if re.search(r"^CONFIG_PACKAGE_%s=[ym]$" % re.escape(n), cfg, re.M):
+        miss.append("-" + n)
+if miss:
+    sys.exit("附加软件包未生效: %s\n包名可能拼错，或该分支没有这个包（defconfig 会静默丢弃）" % " ".join(miss))
+PY
+
+if [ "$CONFIG_ONLY" = "1" ]; then
+    info "已生成 $SRC_DIR/.config（--config-only，不编译）"
+    exit 0
+fi
+
+# ---------------------------------------------------------------- 编译
+
+if [ "$DO_CLEAN" = "1" ]; then
+    info "make clean（保留工具链）"
+    make clean
+fi
+
+info "下载软件包源码"
+make download -j8
+find dl -size -1024c -delete 2>/dev/null || true   # 清掉下载失败的残缺文件
+
+info "开始编译（-j$JOBS，首次约 1~2 小时）"
+START=$(date +%s)
+if ! make -j"$JOBS"; then
+    warn "并行编译失败，改用单线程重跑以定位问题（只重编失败的包，不会从头来）"
+    make -j1 V=s
+fi
+
+# --------------------------------------------------------------- 产物
+
+ELAPSED=$(( ($(date +%s) - START) / 60 ))
+OUT="$SRC_DIR/bin/targets/airoha/an7581"
+info "编译完成，耗时 ${ELAPSED} 分钟"
+echo
+echo "固件目录: $OUT"
+ls -lh "$OUT"/*.bin "$OUT"/*.itb "$OUT"/*.fip 2>/dev/null || ls -lh "$OUT"
+echo
+case "$DEVICE_SYMBOL" in
+    nokia_xg-040g-md-tcboot|bell_xg-040g-md)
+        echo "刷机用: *-sysupgrade.bin" ;;
+    nokia_xg-040g-md)
+        echo "刷机用: factory-kernel.bin + factory-rootfs.bin" ;;
+    nokia_xg-040g-md-ubi)
+        echo "刷机用: preloader.bin + bl31-uboot.fip（USB-TTL 刷入）、*-recovery.itb 救援镜像" ;;
+esac
+echo "软件包: $SRC_DIR/bin/packages/"
+echo "刷机方式详见 docs/variants.md"
