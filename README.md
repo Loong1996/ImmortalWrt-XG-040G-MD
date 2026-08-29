@@ -14,6 +14,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | [设备变体](docs/variants.md) | 三种分区布局、`tcboot.bin` 引导程序分析、能否互相升级 |
 | [自定义软件包](docs/packages.md) | 内置了哪些包、选包页怎么用、刷完机还能不能补装 |
 | [LED 行为](docs/leds.md) | 面板灯与网口灯的语义、怎么改成自己想要的 |
+| [⚠️ 待解决：USB2 口带不动 USB3 U 盘](docs/usb2-port-issue.md) | 已排除的假设与依据、两条线的寄存器原始数据、下次从哪接手 |
 | [原厂备份与刷回原厂](docs/backup-and-restore.md) | 原厂分区表、整片备份步骤、tcboot/bootext.ram 分析、回刷原厂的三条路 |
 
 ## 编译
