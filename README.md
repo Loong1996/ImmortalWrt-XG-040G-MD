@@ -28,7 +28,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 本仓库只包含编译配置、补丁与 CI 流程，固件源码在 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。
 
 1. Fork 本仓库，在 Actions 页面启用 workflow
-2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与内存颗粒容量
+2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与设备变体即可 —— 内存容量默认[自适应](docs/variants.md#内存容量)，换过颗粒也不用管
 3. 约 1~2 小时后，固件发布在本仓库的 Releases 中
 
 **分支选择建议：`master-XG-040G-MD`（默认）**

@@ -2,7 +2,7 @@ name: XG-040G-MD
 
 # 让 Actions 列表直接显示本次选了什么，省得点进去翻日志里的 env 块。
 # 必须写成一行：折叠标量会把缩进更深的续行当字面量，在 ${{ }} 中间插进换行。
-run-name: "XG-040G-MD · ${{ inputs.repo_branch }} · ${{ inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}"
+run-name: "XG-040G-MD · ${{ inputs.repo_branch }} · ${{ inputs.dram_size == 'auto' && '自适应内存' || inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}"
 
 on:
   workflow_dispatch:
@@ -25,11 +25,12 @@ on:
           - stock
           - ubi
       dram_size:
-        description: '板上内存颗粒容量（换过颗粒才需要改）'
+        description: '内存颗粒容量（默认自适应，由引导程序探测；自适应不生效时才需手动指定）'
         required: true
-        default: '1G'
+        default: 'auto'
         type: choice
         options:
+          - auto
           - 512M
           - 1G
           - 2G
@@ -120,7 +121,7 @@ jobs:
         echo "REPO_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
 
     - name: Patch DRAM Size(修改内存容量)
-      if: env.DRAM_SIZE != ''
+      if: env.DRAM_SIZE != '' && env.DRAM_SIZE != 'auto'
       run: |
         cd $OPENWRT_PATH
         # 两条线的 memory 节点位置与写法都不同：
@@ -235,6 +236,25 @@ jobs:
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
         # 25.12 线只有一个设备，FLAVOR 为空则不插入该段
         echo "RELEASE_TAG=XG-040G-MD${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
+        # 自适应：不改写 DTS，memory 节点留 512M 保底，实际容量由引导程序 fixup 进 DTB
+        if [ "$DRAM_SIZE" = "auto" ]; then
+          echo "DRAM_LABEL=自适应" >> $GITHUB_ENV
+        else
+          echo "DRAM_LABEL=$DRAM_SIZE" >> $GITHUB_ENV
+        fi
+        {
+          echo 'DRAM_NOTE<<DRAMNOTEEOF'
+          if [ "$DRAM_SIZE" = "auto" ]; then
+            echo "- **容量自适应**：DTS 的 \`memory\` 只留 512M 作保底，实际容量由引导程序探测后写进 DTB"
+            echo "- \`tcboot\` / \`ubi\` 变体的引导程序是标准 U-Boot，会做这个 fixup —— **512M / 1G / 2G 机器可刷同一份固件**"
+            echo "- \`stock\` 变体用原厂引导程序，是否 fixup 未经验证；若用 stock 且换过颗粒，请改选对应容量重新编译"
+          else
+            echo "- 本固件的 DTS 已按 **$DRAM_SIZE** 写死，\`memory\` 节点固定为该容量"
+            echo "- **请勿刷入更小容量颗粒的机器** —— 内核会访问不存在的物理地址，无法启动"
+            echo "- 未换过颗粒的原厂机器为 512M；一般情况下用默认的「自适应」即可，不必手动指定"
+          fi
+          echo DRAMNOTEEOF
+        } >> $GITHUB_ENV
 
     - name: Cache Toolchain(缓存工具链)
       if: env.CACHE_TOOLCHAIN == 'true'
@@ -520,7 +540,7 @@ jobs:
           echo "固件版本 : $RELEASE_TAG"
           echo "编译分支 : $REPO_BRANCH"
           echo "内核版本 : $VERSION_KERNEL"
-          echo "内存颗粒 : $DRAM_SIZE"
+          echo "内存容量 : $DRAM_LABEL"
           echo "设备定义 : $DEVICE_SYMBOL"
           echo "编译时间 : $DATE"
           echo
@@ -580,7 +600,11 @@ jobs:
           echo "--------"
           echo "* Passwall 与 OpenClash 不要同时启用，两者都会接管 nftables 规则链与 dnsmasq 配置。"
           echo "* dnsmasq / SmartDNS / AdGuardHome 默认均监听 53 端口，刷机后需手动规划端口分配。"
-          echo "* 本固件的 DTS 已按 $DRAM_SIZE 内存颗粒适配，请勿刷入其它容量颗粒的机器。"
+          if [ "$DRAM_SIZE" = "auto" ]; then
+            echo "* 本固件内存容量自适应，由引导程序探测上报；tcboot / ubi 变体可通刷 512M / 1G / 2G 机器。"
+          else
+            echo "* 本固件的 DTS 已按 $DRAM_SIZE 内存颗粒写死，请勿刷入更小容量颗粒的机器。"
+          fi
         } > "$OUT"
         echo "--- $OUT ---"
         cat "$OUT"
@@ -601,14 +625,12 @@ jobs:
         token: ${{ secrets.GITHUB_TOKEN }}
         artifacts: ${{ env.FIRMWARE_PATH }}/*
         body: |
-          **This is OpenWrt Firmware for XG-040G-MD（${{ env.DRAM_SIZE }} 内存颗粒 · ${{ env.VARIANT_LABEL }} 变体）**
-          ### ⚠️ 内存颗粒版本
-          - 本固件为 **${{ env.DRAM_SIZE }} 内存颗粒** 版本，DTS 中的 `memory` 与 `linux,usable-memory-range` 已按 ${{ env.DRAM_SIZE }} 适配
-          - **请勿刷入其它容量颗粒的机器**，颗粒容量与固件不匹配会导致无法启动
-          - 未换过颗粒的原厂机器为 512M
+          **This is OpenWrt Firmware for XG-040G-MD（内存 ${{ env.DRAM_LABEL }} · ${{ env.VARIANT_LABEL }} 变体）**
+          ### 🧠 内存容量
+          ${{ env.DRAM_NOTE }}
           ### 📒 固件信息(XG-040G-MD)
           - 这是 XG-040G-MD 的专属构建
-          - 🧠 内存颗粒：${{ env.DRAM_SIZE }}
+          - 🧠 内存容量：${{ env.DRAM_LABEL }}
           - 🧩 编译变体：**${{ env.VARIANT_LABEL }}**
           - 📐 设备定义：`${{ env.DEVICE_SYMBOL }}`
           - 💻 目标分支：${{ env.REPO_BRANCH }}

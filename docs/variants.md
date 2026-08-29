@@ -117,3 +117,37 @@ run bootcmd
 > ✅ **`tcboot` 变体已实机验证**：分区偏移与 `UBINIZE_OPTS` 正确，能引导、进系统，四个网口与 NPU、EN8811H 均正常。早期版本因 ubi 中缺少 `ri` 卷导致网络驱动永久 deferred probe，已通过去掉 dts 里的 nvmem 硬依赖、改由 preinit 钩子在用户态读取该卷解决。
 >
 > ⚠️ 25.12 线的 `bell_xg-040g-md` 没有声明 `all_flash` 分区，**在跑着的系统里无法直接 dd 整片 flash**；master 的三个变体都有。
+
+## 内存容量
+
+原厂是 512M 颗粒。换过 1G / 2G 的机器**不需要单独编固件** —— workflow 的内存容量默认是 **自适应**。
+
+原理：DTS 的 `memory` 节点只写 512M 作保底，标准 U-Boot 在 `bootm` 时会把自己探测到的真实容量 fixup 进 DTB，把这个保底值覆盖掉。
+
+实测（`tcboot` 变体、1G 颗粒、刷的是 **512M 档**编出来的固件）：
+
+```
+U-Boot:  DRAM:  1 GiB
+内核:    Initmem setup node 0 [mem 0x0000000080200000-0x00000000bfffffff]
+         Memory: 948576K/1046528K available
+```
+
+`0xbfffffff` 是 1G 的末地址（512M 会停在 `0x9fffffff`），总量 1022MB —— fixup 确实生效。
+
+| 变体 | 引导程序 | 自适应 |
+| --- | --- | --- |
+| `tcboot` | 第三方 U-Boot 2025.01 | ✅ 实测有效 |
+| `ubi` | OpenWrt 自建 U-Boot | 同为标准 U-Boot，未实测 |
+| `stock` | 原厂引导程序 | 未验证，换过颗粒建议手动指定 |
+
+手动指定 `512M` / `1G` / `2G` 时，DTS 的 `memory` 被写死成该容量。**这时刷进更小颗粒的机器会起不来** —— 内核按 DTB 去访问不存在的物理地址。反过来（小容量固件刷大颗粒机器）只是白白浪费内存，不会出事。
+
+### 两个属性的分工
+
+```
+/memory 的 reg                      声明有多少内存   ← 真正决定容量的
+chosen/linux,usable-memory-range    最多用到哪一段，取交集，只减不增
+```
+
+`usable-memory-range` 走内核的 `memblock_cap_memory_range()`，那个函数体里全是 `memblock_remove_*`，**只能往少了裁，不会凭空多出内存**。所以本项目把它固定在 2G 的值，对任何容量都不构成裁剪，同时保住起点 `0x80200000` —— 那是上游给 ATF 那 2MB 的第一道保护，比 `reserved-memory` 的 `no-map` 更早生效（前者在 `setup_machine_fdt()` 里，后者要等到 `arm64_memblock_init()` 末尾）。
+
