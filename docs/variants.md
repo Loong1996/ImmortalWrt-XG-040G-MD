@@ -32,6 +32,8 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 
 `tcboot.bin` 不是本项目构建的，以下信息由对二进制的分析得出：
 
+> 📌 上游（openwrt 与 immortalwrt）只有 `nokia_xg-040g-md` 与 `nokia_xg-040g-md-ubi` 两个设备定义，**`nokia_xg-040g-md-tcboot` 是本项目源码分支自加的**。因此 `stock` 与 `ubi` 能跟上游同步，tcboot 变体的维护责任全在本项目。
+
 | | |
 | --- | --- |
 | 基础 | [pepe2k/u-boot_mod](https://github.com/pepe2k/u-boot_mod) 的 Web 恢复界面移植到 Airoha AN7581 |
@@ -75,6 +77,7 @@ DTB 里确实带了 AN7581 该有的东西（NPU 的五段 `reserved-memory`、`
 | MAC 只能靠 preinit 从 ubi 的 `ri` 卷读 | EVB 的 DTB 里根本没有 nvmem / MAC 节点 |
 | `memory` 写死 512M（`0x80000000` + `0x20000000`） | EVB 默认值，全靠 `bootm` 时 fixup 覆盖 |
 | `env` 分区从未被写过、CRC 无效 | DTB 里定义了 512K，但 EVB 的默认环境是编译进去的 |
+| CPU 无法调频、95°C 被动降频档位失效 | tcboot 的 ATF 未实现 Airoha 的 AVS SIP 调用（`0x82000301`），`airoha-cpu-pmdomain` 把频率读成 0，`cpufreq-dt` 注册失败；靠自带的 `patches-6.18/608` 加 ARMPLL 回退路径兜底 |
 
 > 💡 以后再遇到 tcboot 的异常行为，第一反应应该是「EVB 的配置里有没有这东西」，而不是当成单独的 bug 去查。
 
@@ -146,6 +149,32 @@ run bootcmd
 * 升级用 `sysupgrade.itb`
 * 原厂 `ri` 与 `bosa` 由官方转换流程转存为同名 UBI 卷，MAC 得以保留
 * 与 `tcboot` 一样，`ri` 的读取由 preinit 钩子在用户态完成，**没转存 `ri` 卷也能正常启动**（退化为随机 MAC）；转存过则拿到真实硬件 MAC
+
+UBI 里的卷（`fip` 也在其中，不是独立分区）：
+
+```
+ubi @ 0x20000  255.875 MB
+ ├─ bosa        光模块校准
+ ├─ ri          MAC（需从原厂 ri 分区转存）
+ ├─ fit         kernel + rootfs，即 rootdisk
+ ├─ fip         BL31 + U-Boot
+ ├─ ubootenv    ┐ 冗余 env
+ └─ ubootenv2   ┘
+```
+
+> ⚠️ **上面这条只对本项目编的固件成立。上游官方 snapshot 的 ubi 镜像缺 `ri` 卷会整机失联。**
+>
+> 硬依赖来自共用 dtsi 里 `&gdm1` / `&gdm4` 的 `nvmem-cells = <&macaddr_factory_3e (0)>`。本项目的 `an7581-nokia_xg-040g-md-ubi.dts` 用 `/delete-property/` 删掉了这两个引用，改由 preinit 在用户态读卷；**上游的同名文件没有这段**，保留着硬依赖。
+>
+> 卷不存在时 nvmem provider 永不注册，`of_get_ethdev_address()` 返回 `-EPROBE_DEFER`，而驱动对这个错误码是直接 return 的（不会退化为随机 MAC），`airoha_eth` 与其下游的 DSA 交换机永久停在 deferred probe，整机无网络且日志里没有任何线索：
+>
+> ```text
+> mt7530-mmio 1fb58000.switch: Failed to register DSA switch: -517
+> platform 1fb58000.switch: deferred probe pending: (reason unknown)
+> platform 1fb50000.ethernet: deferred probe pending: (reason unknown)
+> ```
+>
+> 所以要用官方 snapshot，**必须先把 `ri` 卷转存好再刷**。
 
 ## 互相能不能升级
 
