@@ -15,6 +15,7 @@ on:
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
+          - xpon-test
           - master-XG-040G-MD-httpd
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
@@ -175,7 +176,7 @@ jobs:
         #   25.12 线  自制 bell_xg-040g-md，内核 6.12，只有这一个设备
         #   master 线 上游原生，内核 6.18，三个变体由 device_variant 输入选择
         case "$REPO_BRANCH" in
-          master-XG-040G-MD*)
+          master-XG-040G-MD*|xpon-test)
             CONFIG_FILE=config/xg-040g-md-master.config
             case "$DEVICE_VARIANT" in
               tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
