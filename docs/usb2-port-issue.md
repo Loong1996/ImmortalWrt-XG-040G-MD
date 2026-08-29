@@ -61,7 +61,7 @@ master 线（内核 6.18）走 UAS 时，枚举能过、盘型号能读出来，
 | --- | --- |
 | 设备 | Nokia XG-040G-MD，`tcboot` 变体 |
 | 内存 | **已把原 512M 颗粒换成 1G**（这点很重要，见[剩余嫌疑](#剩余嫌疑)） |
-| 故障固件 | ImmortalWrt SNAPSHOT `r40926-8b82ee2970`，内核 6.18.44 |
+| 故障固件 | ImmortalWrt SNAPSHOT，内核 6.18.44（实测固件 banner 为 `r40926-8b82ee2970`，该 commit 含后来移除的无效补丁；因其是死代码，行为与不含它的固件一致）|
 | 正常固件 | ImmortalWrt 25.12-SNAPSHOT `r37817-993fee8c34`，内核 6.12.85 |
 | 故障 U 盘 | SanDisk 3.2Gen1，VID:PID `0781:55b8`，61.5 GB，`ANSI: 7`（支持 UAS） |
 | 正常 U 盘 | SanDisk Ultra，15.4 GB，`ANSI: 6`（**不支持 UAS**，只能 BOT） |
@@ -94,7 +94,7 @@ master 线（内核 6.18）走 UAS 时，枚举能过、盘型号能读出来，
 * **那段补丁是死代码**。真正写这一位的是 `airoha_usb_phy_u3_set_mode()`；`usb0` 声明了 `PHY_TYPE_USB3` 实例，xhci-mtk probe 时对它调 `phy_set_mode(PHY_MODE_USB_HOST)`，走 `else` 分支把 bit3 写回 1，把 clk 驱动清的零盖掉。**两条线实测都读出 `0x109`（bit3=1）**，25.12 的补丁同样没生效。
 * **bit3=0 的场景已经验过**。运行时 `devmem` 清零（读回 `0x101`）、重新 `bind 1fad0000.usb` 之后，U 盘照样 30 秒超时。
 
-曾据此提交 `8b82ee2`，编固件实测无效，已由 `595f395` 回滚。
+曾据此往 `patches-6.18/` 加过一个 `914-clk-en7523-route-shared-serdes-to-USB.patch`，把 `REG_USB_PCIE_SEL` 一并清零。编固件实测无效（刷上去后 `0x1fb0009c` 仍读出 `0x109`），相关提交已从分支上移除，不要再试。
 
 ### 5. `pcie2` 占用 `usb1_phy` 的 USB3 lane ❌
 
@@ -263,7 +263,7 @@ dmesg -n 7
 | SoC DTS | `target/linux/airoha/dts/an7581.dtsi`（`usb0`/`usb1`/`usb0_phy`/`usb1_phy`） |
 | 内存节点 | `target/linux/airoha/dts/an758x-nokia_xg-040g-common.dtsi`（`linux,usable-memory-range`） |
 | 25.12 独有补丁 | `target/linux/airoha/patches-6.12/910-02-usb-pcie.patch`（已证实是死代码） |
-| 错误的修复尝试 | commit `8b82ee2`，已由 `595f395` 回滚 |
+| 错误的修复尝试 | 曾加过 `patches-6.18/914-clk-en7523-route-shared-serdes-to-USB.patch`，实测无效，提交已移除 |
 | 内存容量处理 | 本仓库 `.github/workflows/xg-040g-md-immortalwrt.yml` 的 `Patch DRAM Size` 步骤 |
 
 ## 排查方法备忘
