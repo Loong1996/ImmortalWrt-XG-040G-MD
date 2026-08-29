@@ -12,6 +12,13 @@
 #
 set -euo pipefail
 
+# 英文安装的 Ubuntu 常见 LANG=C / 未设 locale，此时脚本的中文提示会显示成乱码。
+# C.UTF-8 在 Ubuntu 20.04+ 一定存在，字符集是 UTF-8 而排序规则仍是 C —— 后者正是
+# 编译时想要的，不会像 zh_CN.UTF-8 那样改变 sort/ls 的行为影响构建。
+if ! locale charmap 2>/dev/null | grep -qi "utf-*8"; then
+    export LC_ALL=C.UTF-8 LANG=C.UTF-8
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL="https://github.com/Loong1996/immortalwrt.git"
 

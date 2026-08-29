@@ -31,6 +31,16 @@
 >
 > 更实质的理由是编译器：26.04 带的 GCC 已是 15 及以上，而 OpenWrt `tools/` 下那批 host 工具（m4、autoconf、elfutils 等）的源码通常滞后于最新编译器，容易在 `-Werror` 上中断，且要一个个单独打补丁绕开。选 24.04 同时也贴近 workflow 里 `ubuntu-latest` 的环境，少一层「新 GCC/glibc 导致某个包编不过」的变量。
 
+> ℹ️ **英文安装的 Ubuntu 要顺手把 locale 设成 UTF-8**，否则 `git log`、`less`、`man`、`vim` 里的中文会显示成 `<E4><B8><AD>` 这类转义。
+>
+> 容易误判的一点：`echo "中文"` 显示正常**不代表** locale 没问题 —— `echo` 只是把 UTF-8 字节原样丢给终端，由终端自己解码；而 `less` 这类程序是按 locale 决定字节能不能打印的，locale 为 `C` 时就转义掉了。判据看 `locale charmap`，输出 `UTF-8` 才算正常，`ANSI_X3.4-1968` 就是 C locale：
+>
+> ```bash
+> sudo update-locale LANG=C.UTF-8   # 重新登录后生效
+> ```
+>
+> 用 `C.UTF-8` 而非 `zh_CN.UTF-8`：它英文安装也自带、不需要 `locale-gen`，且排序规则仍是 C —— 后者正是编译时想要的，不会改变 `sort`/`ls` 的行为。`build.sh` 自己的输出已内置同样的兜底，不依赖系统设置。
+
 **内存**决定的是并行度而非能否编译。峰值约每个并行任务 1.5~2 GB（链接内核和大型 C++ 包时最高），所以**可用 `-j` 数 ≈ 内存 GB ÷ 2**。4 GB 机器就老实用 `make -j2`：`make -j$(nproc)` 撑爆内存时，OOM killer 会在编译中途杀掉 gcc，报出的错看不出是内存问题，白等几小时。CI 上的 runner 是 4 核 16 GB。
 
 **磁盘** 40 GB 的构成：源码树含 `.git` 约 1.5 GB、`dl/` 上游 tarball 2~4 GB、`build_dir/` + `staging_dir/` + 工具链 25~30 GB、产物 `bin/` 不到 1 GB。建议给到 80 GB 是因为两个变量：三个设备变体和两条源码线若各留一棵树互不干扰（推荐，省得反复 `make clean`），每棵都要 30 GB；选包页勾了 sing-box、xray-core、adguardhome 这类 Go 包的话，要现编 Go 工具链，`build_dir` 再涨 10~15 GB。用 SSD —— OpenWrt 编译是海量小文件读写，机械盘耗时翻倍不止。
