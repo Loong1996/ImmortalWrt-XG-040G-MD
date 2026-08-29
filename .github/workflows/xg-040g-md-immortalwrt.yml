@@ -8,13 +8,14 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        description: '选择编译分支（master 跟进上游、内核 6.18；25.12 为固定快照、内核 6.12）'
+        description: '选择编译分支（master 跟进上游、内核 6.18；25.12 为固定快照、内核 6.12；-httpd 为 U-Boot 网页救砖验证分支）'
         required: true
         default: 'master-XG-040G-MD'
         type: choice
         options:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
+          - master-XG-040G-MD-httpd
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
         required: true
@@ -174,7 +175,7 @@ jobs:
         #   25.12 线  自制 bell_xg-040g-md，内核 6.12，只有这一个设备
         #   master 线 上游原生，内核 6.18，三个变体由 device_variant 输入选择
         case "$REPO_BRANCH" in
-          master-XG-040G-MD)
+          master-XG-040G-MD*)
             CONFIG_FILE=config/xg-040g-md-master.config
             case "$DEVICE_VARIANT" in
               tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
