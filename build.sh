@@ -38,6 +38,31 @@ die() { echo "错误: $*" >&2; exit 1; }
 info() { echo -e "\033[1;32m==>\033[0m $*"; }
 warn() { echo -e "\033[1;33m警告:\033[0m $*" >&2; }
 
+# 分阶段计时。首次编译一两个小时，事后想知道时间花在哪一段（下载慢还是编译慢），
+# 光有总耗时不够用，所以每段单独记一笔。
+SCRIPT_START="$(date +%s)"
+STAGE_START="$SCRIPT_START"
+STAGE_LOG=""
+fmt_dur() {
+    local s="$1"
+    if   [ "$s" -ge 3600 ]; then printf '%d 小时 %d 分' $(( s / 3600 )) $(( s % 3600 / 60 ))
+    elif [ "$s" -ge 60 ];   then printf '%d 分 %d 秒'   $(( s / 60 ))   $(( s % 60 ))
+    else                         printf '%d 秒' "$s"
+    fi
+}
+stage_done() {
+    local now; now="$(date +%s)"
+    STAGE_LOG="${STAGE_LOG}    $(printf '%-8s' "$1") $(fmt_dur $(( now - STAGE_START )))\n"
+    STAGE_START="$now"
+}
+report_time() {
+    echo
+    echo "耗时："
+    if [ -n "$STAGE_LOG" ]; then echo -en "$STAGE_LOG"; fi
+    echo "    ------------------------"
+    echo "    $(printf '%-8s' "合计") $(fmt_dur $(( $(date +%s) - SCRIPT_START )))"
+}
+
 usage() {
     cat <<'EOF'
 用法: ./build.sh [选项]
@@ -212,6 +237,7 @@ if [ "$DO_UPDATE" = "1" ] || [ ! -d package/feeds ]; then
 else
     info "跳过 feeds 更新（要更新加 --update）"
 fi
+stage_done "准备"
 
 # ---------------------------------------------------------------- 配置
 
@@ -273,6 +299,7 @@ fi
 grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
     || die "defconfig 后设备符号丢失，$DEVICE_SYMBOL 在分支 $BRANCH 中可能不存在"
 info "已选定设备: $DEVICE_SYMBOL"
+stage_done "配置"
 
 python3 - <<'PY'
 import json, os, re, sys
@@ -294,6 +321,7 @@ PY
 
 if [ "$CONFIG_ONLY" = "1" ]; then
     info "已生成 $SRC_DIR/.config（--config-only，不编译）"
+    report_time
     exit 0
 fi
 
@@ -307,19 +335,19 @@ fi
 info "下载软件包源码"
 make download -j8
 find dl -size -1024c -delete 2>/dev/null || true   # 清掉下载失败的残缺文件
+stage_done "下载"
 
 info "开始编译（-j$JOBS，首次约 1~2 小时）"
-START=$(date +%s)
 if ! make -j"$JOBS"; then
     warn "并行编译失败，改用单线程重跑以定位问题（只重编失败的包，不会从头来）"
     make -j1 V=s
 fi
+stage_done "编译"
 
 # --------------------------------------------------------------- 产物
 
-ELAPSED=$(( ($(date +%s) - START) / 60 ))
 OUT="$SRC_DIR/bin/targets/airoha/an7581"
-info "编译完成，耗时 ${ELAPSED} 分钟"
+info "编译完成"
 echo
 echo "固件目录: $OUT"
 ls -lh "$OUT"/*.bin "$OUT"/*.itb "$OUT"/*.fip 2>/dev/null || ls -lh "$OUT"
@@ -334,3 +362,4 @@ case "$DEVICE_SYMBOL" in
 esac
 echo "软件包: $SRC_DIR/bin/packages/"
 echo "刷机方式详见 docs/variants.md"
+report_time
