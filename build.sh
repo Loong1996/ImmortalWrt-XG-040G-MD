@@ -188,11 +188,56 @@ if [ ! -d "$SRC_DIR/.git" ]; then
     info "克隆源码（补丁已内置在分支中，不需要另外打补丁）"
     git clone "$REPO_URL" -b "$BRANCH" "$SRC_DIR"
     DO_UPDATE=1    # 新树必须装 feeds
-elif [ "$DO_UPDATE" = "1" ]; then
-    info "更新源码树"
-    git -C "$SRC_DIR" pull --ff-only
 else
-    info "源码树已存在，保持原样（要更新加 --update）"
+    # 树已存在：先确认它确实在目标分支上，否则会拿着别的源码去编 $DEVICE_SYMBOL
+    CURRENT_BRANCH="$(git -C "$SRC_DIR" rev-parse --abbrev-ref HEAD)"
+    if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
+        if [ "$DO_UPDATE" = "1" ]; then
+            die "源码树在 $CURRENT_BRANCH，与 --branch $BRANCH 不符，不能自动更新。先自行切换分支"
+        fi
+        warn "源码树当前在 $CURRENT_BRANCH，而不是 $BRANCH —— 编出来的是前者的代码"
+    fi
+
+    if [ "$DO_UPDATE" = "1" ]; then
+        info "更新源码树"
+        git -C "$SRC_DIR" fetch origin "$BRANCH"
+        # master 线跟进上游走的是 rebase + force-with-lease（见 docs/branches.md），
+        # 远端被强推后本地 HEAD 不再是远端的祖先，--ff-only 会直接失败。分两种情况处理：
+        # 本地确实没有自己的东西就重置对齐；有则停下来交给你决定，绝不静默丢弃改动。
+        if git -C "$SRC_DIR" merge-base --is-ancestor HEAD "origin/$BRANCH"; then
+            git -C "$SRC_DIR" merge --ff-only "origin/$BRANCH"
+        else
+            warn "远端 $BRANCH 与本地已分叉，多半是跟进上游后强推过"
+            DIRTY="$(git -C "$SRC_DIR" status --porcelain)"
+            # 不能按 SHA 判断本地是否「多出提交」：rebase / amend 之后，本地那个旧提交
+            # 的 SHA 在远端已不存在，rev-list 会把它算成本地独有，于是每次跟进上游后
+            # 都误判成有改动。git cherry 按 patch-id 比内容 —— 已被上游包含的标 -，
+            # 只有标 + 的才是真正属于你自己的提交。
+            OWN="$(git -C "$SRC_DIR" cherry "origin/$BRANCH" HEAD 2>/dev/null | grep '^+' || true)"
+            if [ -n "$DIRTY" ] || [ -n "$OWN" ]; then
+                if [ -n "$OWN" ]; then
+                    echo "    本地有远端没有的提交:"
+                    echo "$OWN" | while read -r _ sha; do
+                        git -C "$SRC_DIR" --no-pager log -1 --oneline "$sha" | sed 's/^/      /'
+                    done
+                fi
+                if [ -n "$DIRTY" ]; then
+                    echo "    工作区有未提交的修改:"
+                    echo "$DIRTY" | sed 's/^/      /'
+                fi
+                die "本地有你自己的改动，不做自动重置。先 git -C $SRC_DIR branch <备份名> 或 stash，再重跑"
+            fi
+            # 即便判定为可重置，也先留一个备份 ref —— reset --hard 之后旧 HEAD 只剩
+            # reflog 可找，打个分支成本极低，误判时能立刻找回来。
+            BACKUP="backup/$(date +%Y%m%d-%H%M%S)"
+            git -C "$SRC_DIR" branch "$BACKUP" HEAD
+            info "本地无独有改动，重置到 origin/$BRANCH（旧 HEAD 已存为 $BACKUP）"
+            git -C "$SRC_DIR" reset --hard "origin/$BRANCH"
+            warn "基线已被重写，内核补丁或 DTS 若有变动，建议这次加 --clean 重编"
+        fi
+    else
+        info "源码树已存在，保持原样（要更新加 --update）"
+    fi
 fi
 
 cd "$SRC_DIR"
