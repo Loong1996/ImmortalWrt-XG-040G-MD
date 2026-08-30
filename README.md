@@ -6,6 +6,12 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 > **⚠️ 请准备好 USB-TTL，做好随时救砖的准备。**
 
+<details>
+<summary>☕ 觉得有用，请作者喝杯咖啡</summary>
+<br>
+<img src="img/reward.JPG" width="220" alt="Loong 的赞赏码">
+</details>
+
 ## 文档
 
 | 文档 | 内容 |
