@@ -393,9 +393,17 @@ echo "    设备   $DEVICE_SYMBOL"
 echo "    配置   $CONFIG_FILE"
 # FILES 是 OpenWrt 官方的 rootfs 覆盖机制，只在生成镜像这一步生效，
 # 不需要碰 immortalwrt 源码分支——banner 内容改这里的 files/etc/banner 就行。
-if ! make -j"$JOBS" FILES="$REPO_ROOT/files"; then
+#
+# 必须以环境变量方式传（FILES=... make ...），不能写成 make 的命令行变量
+# （make ... FILES=...）：内核模块打包逻辑（include/kernel-defaults.mk）内部
+# 也用了同名变量 FILES 存每个 kmod 自己的文件列表，命令行变量的优先级盖过
+# makefile 里任何普通赋值，会把每个 kmod 包的内容全部顶替成这个 banner 文件，
+# 装包时几十个 kmod 争抢同一个文件所有权直接报错退出。环境变量则会被内部
+# 的局部赋值正常遮盖，只有真正用到 FILES 的镜像生成步骤才会读到它。
+export FILES="$REPO_ROOT/files"
+if ! make -j"$JOBS"; then
     warn "并行编译失败，改用单线程重跑以定位问题（只重编失败的包，不会从头来）"
-    make -j1 V=s FILES="$REPO_ROOT/files"
+    make -j1 V=s
 fi
 stage_done "编译"
 
