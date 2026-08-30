@@ -105,15 +105,21 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fi
 
 | 补丁 | 做什么 |
 | --- | --- |
-| `202` | httpd 骨架。走 `tcp_stream` 回调，`rx()` 拿到的是流偏移，上传的字节直接落到 `$loadaddr` |
-| `203` | multipart 上传，刷写交给现成的 env 脚本 |
-| `204` | 最小 DHCP 服务器 + 面板流水灯 |
-| `205` | 引导器也能传（BL2 / FIP / 重建 UBI），写入时齐闪，写完自动重启，每步带内置兜底 |
-| `207` | 恢复页面：中文、响应式、深浅色手动切换、上传进度、确认对话框 |
-| `950` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
-| `951` | 触发路径与两条 httpd 专用的 env 脚本 |
+| `202-net-add-httpd-recovery-server` | 全部的 httpd —— 新增 `net/httpd.c`，外加 `net.c` / `Kconfig` / `Makefile` / `net-legacy.h` 四处挂接 |
+| `950-configs-xg-040g-md-enable-httpd` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
+| `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
 
-`206`（DRAM 容量探测）编号夹在中间但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。
+`206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
+
+> **为什么只有一个 httpd 补丁**
+>
+> 开发时它是五个（骨架 → 上传 → DHCP 与面板灯 → 引导器 → 页面），合进主线时压成了一个。
+>
+> `patches/` 目录的语义是「**对上游源码的修改集**」，不是提交历史。`net/httpd.c` 是我们新增的文件，让它被五个补丁层层重写的代价是实打实的：构建时同一个文件反复 apply 五次、想知道最终形态得在脑子里叠四层 diff、上游同步时冲突面变成五份。而且没有哪一层是可以单独回退的 —— 你不会想只去掉「DHCP」或「页面」，它们本来就是一个功能。
+>
+> 对照同目录里合理的分法：`100`–`111` 是 backport，一个补丁对应上游一个 commit；`200` / `201` 是两件互不相干的事。**分开要有理由，「开发时是分步做的」不算理由。**
+>
+> 开发过程的原貌（五个补丁、21 个提交）留在 `archive/master-XG-040G-MD-httpd`。
 
 ### `951` 改了什么
 
