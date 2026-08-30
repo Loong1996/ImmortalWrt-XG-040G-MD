@@ -656,7 +656,7 @@ jobs:
           - 固件实际安装的完整包列表见附件中的 `*.manifest`，完整内核配置见 `build.config`
           ### 🧩 附加软件包
           ${{ env.EXTRA_NOTE }}
-          - 想加装别的软件包：在[选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/)勾选后复制包名串，粘进本 workflow 的 `extra_packages` 输入重新编译
+          - 想加装别的软件包：在[选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html)勾选后复制包名串，粘进本 workflow 的 `extra_packages` 输入重新编译
           ### 🔖 软件包版本覆盖
           ${{ env.PKG_VER_NOTE }}
           - 由仓库里的 `config/pkg-versions.txt` 控制，编译前改写 feed 的 `PKG_VERSION` 并自动重算 `PKG_HASH`

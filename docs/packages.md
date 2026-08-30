@@ -33,7 +33,7 @@
 
 不想动配置文件、只是这次编译想多带几个包时，用选包页：
 
-**<https://loong1996.github.io/ImmortalWrt-XG-040G-MD/>**
+**<https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html>**
 
 页面上的可选清单取自源码树的 `tmp/.packageinfo`，所以**只列出该分支真正编得出来的包**，自建的 `luci-app-airoha-npu` 也在里面。`HIDDEN` 的包会被剔掉——它们在 menuconfig 里没有选项条目，勾了也不会生效，列出来只会让构建白失败一次。勾选后底部会生成一串包名，粘进 `Run workflow` 的 **附加软件包** 那一栏：
 

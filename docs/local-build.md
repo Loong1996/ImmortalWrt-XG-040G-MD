@@ -6,7 +6,7 @@
 
 **什么时候值得这么做**：需要反复改内核补丁、调 DTS、抓 `V=s` 完整日志时。CI 每次都是冷启动，改一行也要重编一两个小时；本地第二次起走增量，通常几分钟。像 [USB2 口带不动 USB3 U 盘](usb2-port-issue.md) 这类要反复试补丁的问题，本地编译基本是必需的。
 
-**什么时候不必**：只是想要一份能刷的固件、或只是想换几个软件包 —— 直接用 [选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/) 加 `Run workflow` 更省事。
+**什么时候不必**：只是想要一份能刷的固件、或只是想换几个软件包 —— 直接用 [选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html) 加 `Run workflow` 更省事。
 
 ## 一、机器要求
 

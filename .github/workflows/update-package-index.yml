@@ -141,9 +141,12 @@ jobs:
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-        # 只覆盖本次产出的文件，另一条线的索引原样留着
+        # 只覆盖本次产出的文件，另一条线的索引原样留着。
+        # index.html 是门户（选包/救砖教程/仓库三张卡片），选包工具本体搬到 packages.html。
         stage() {
-          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/index.html"
+          cp "$GITHUB_WORKSPACE/portal/index.html" "$GH/index.html"
+          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/packages.html"
+          cp "$GITHUB_WORKSPACE/guide/recovery-guide.html" "$GH/recovery-guide.html"
           cp "$PAGES"/*.json "$GH/"
           touch "$GH/.nojekyll"
           git add -A

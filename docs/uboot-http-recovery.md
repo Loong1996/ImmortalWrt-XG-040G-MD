@@ -4,6 +4,8 @@
 
 已合入 `master-XG-040G-MD` 主线，开发过程的完整提交历史归档在 `archive/master-XG-040G-MD-httpd`。
 
+> 想要图文版、从零开始的操作教程（含实拍接线图与串口截图），见 **[网页救砖指南](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html)**。本文档是技术参考，覆盖设计取舍与踩过的坑。
+
 > 只对 `ubi` 变体有效。`tcboot` 变体用的是第三方引导程序，`stock` 用原厂引导，都不经过这个 U-Boot。
 
 ---
