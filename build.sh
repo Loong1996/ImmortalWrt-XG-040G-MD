@@ -246,6 +246,21 @@ fi
 cd "$SRC_DIR"
 git --no-pager log -1 --date=short --format="    当前 HEAD: %h %cd %s"
 
+# U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，ubi 引导
+# 还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb / 8211f2d7 移植到
+# uboot-airoha）；SkyHigh 走另一张表，这两份不会动到它。
+case "$BRANCH" in
+    master-XG-040G-MD*|xpon-test)
+        UBOOT_PATCHES="$SRC_DIR/package/boot/uboot-airoha/patches"
+        if [ -d "$UBOOT_PATCHES" ]; then
+            info "写入 U-Boot FM25G01B/FM25G02B 闪存补丁"
+            cp -f "$REPO_ROOT"/patch/uboot-airoha/*.patch "$UBOOT_PATCHES/"
+        else
+            warn "未找到 $UBOOT_PATCHES，跳过 U-Boot 闪存补丁"
+        fi
+        ;;
+esac
+
 # ------------------------------------------------------------ 内存容量改写
 
 # 默认 auto 不动 DTS：memory 节点留 512M 保底，实际容量由引导程序探测后写进 DTB，

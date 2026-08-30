@@ -116,6 +116,9 @@ mkdir -p ~/build && cd ~/build
 git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
 git clone https://github.com/Loong1996/immortalwrt.git -b master-XG-040G-MD openwrt
 cd openwrt
+
+# master 线：让官方 UBI U-Boot 认 FM25G01B/G02B（build.sh / CI 会自动拷）
+cp ../ImmortalWrt-XG-040G-MD/patch/uboot-airoha/*.patch package/boot/uboot-airoha/patches/
 ```
 
 25.12 线把分支换成 `-b openwrt-25.12-XG-040G-MD`。两条线的差异见[源码分支与跟进上游](branches.md)。

@@ -121,6 +121,15 @@ jobs:
         echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
         echo "REPO_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
 
+    - name: Patch U-Boot SPI-NAND(U-Boot 复旦闪存)
+      if: startsWith(github.event.inputs.repo_branch, 'master-XG-040G-MD') || github.event.inputs.repo_branch == 'xpon-test'
+      run: |
+        # U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，
+        # ubi 引导还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb /
+        # 8211f2d7 移植）；SkyHigh 走另一张表，这两份不会动到它。
+        cp -f "$GITHUB_WORKSPACE"/patch/uboot-airoha/*.patch \
+          "$OPENWRT_PATH/package/boot/uboot-airoha/patches/"
+
     - name: Patch DRAM Size(设置内存上限)
       if: env.DRAM_SIZE != ''
       run: |
