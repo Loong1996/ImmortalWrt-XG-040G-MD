@@ -278,6 +278,13 @@ jobs:
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
+    - name: Inject Author Info(写入作者信息)
+      run: |
+        # 在默认 SSH banner 和 LuCI 概览「固件版本」末尾追加作者信息。
+        # 不能用 make FILES=：全量编译读的是源码树里的 files/，FILES 是
+        # ImageBuilder 的接口，写成命令行变量还会盖掉 kmod 打包用的同名变量。
+        python3 "$GITHUB_WORKSPACE/scripts/inject-author-info.py" "$OPENWRT_PATH"
+
     - name: Load Custom Configuration(加载自定义配置)
       run: |
         # 用 cp 而非 mv：保留带注释的原始配置，供后续生成自定义软件包清单
@@ -508,17 +515,6 @@ jobs:
       run: |
         cd $OPENWRT_PATH
         echo -e "$(nproc) thread compile"
-        # FILES 是 OpenWrt 官方的 rootfs 覆盖机制，只在生成镜像这一步生效，
-        # 不需要碰 immortalwrt 源码分支——banner 内容改这里的 files/etc/banner 就行。
-        #
-        # 必须以环境变量方式传（FILES=... make ...），不能写成 make 的命令行变量
-        # （make ... FILES=...）：内核模块打包逻辑（include/kernel-defaults.mk）内部
-        # 也用了同名变量 FILES 存每个 kmod 自己的文件列表，命令行变量的优先级盖过
-        # makefile 里任何普通赋值，会把每个 kmod 包的内容全部顶替成这个 banner 文件，
-        # 装包时几十个 kmod 争抢同一个文件所有权直接报错退出（已实测踩过一次）。
-        # 环境变量则会被内部的局部赋值正常遮盖，只有真正用到 FILES 的镜像生成
-        # 步骤才会读到它。
-        export FILES="$GITHUB_WORKSPACE/files"
         make -j$(nproc) || make -j1 || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
         echo "DATE=$(date +"%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV

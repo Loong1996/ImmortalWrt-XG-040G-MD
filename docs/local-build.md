@@ -125,6 +125,9 @@ cd openwrt
 ```bash
 ./scripts/feeds update -a
 ./scripts/feeds install -a
+
+# 在默认 SSH banner 和 LuCI 固件版本后面追加作者信息（build.sh / CI 会自动跑）
+python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
 ```
 
 ### 4. 配置
