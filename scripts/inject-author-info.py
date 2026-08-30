@@ -49,10 +49,18 @@ def append_banner(root: Path) -> None:
     print("    已写入 SSH banner: %s" % path)
 
 
+# 编译产物里的 10_system.js 会被 minify 成一行，格式和源码不同。
+# 只改 feeds 源码；build_dir / staging_dir 里那份编 luci-mod-status 时会重新生成。
+_SKIP_DIR = {"build_dir", "staging_dir", "staging_dir_host", "tmp", "bin", "dl"}
+
+
 def patch_luci(root: Path) -> None:
     found: list[Path] = []
     seen: set[Path] = set()
     for p in root.glob("**/luci-mod-status/**/view/status/include/10_system.js"):
+        rel = p.relative_to(root)
+        if any(part in _SKIP_DIR for part in rel.parts):
+            continue
         real = p.resolve()
         if real in seen:
             continue
