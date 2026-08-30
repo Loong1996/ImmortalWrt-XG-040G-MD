@@ -19,7 +19,7 @@ on:
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
         required: true
-        default: 'tcboot'
+        default: 'ubi'
         type: choice
         options:
           - tcboot

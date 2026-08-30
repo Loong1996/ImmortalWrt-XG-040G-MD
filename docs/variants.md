@@ -1,6 +1,6 @@
 # 设备变体（分区布局与刷机方式）
 
-实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一（`tcboot` / `stock` / `ubi`，默认 `tcboot`），workflow 会自动改写 `.config` 的设备符号，25.12 分支则忽略该输入并给出 warning。
+实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一（`tcboot` / `stock` / `ubi`，默认 `ubi`），workflow 会自动改写 `.config` 的设备符号，25.12 分支则忽略该输入并给出 warning。
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |

@@ -52,7 +52,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ## 设备变体
 
-实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一，默认 `tcboot`。
+实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一，默认 `ubi`。
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |

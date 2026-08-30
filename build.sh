@@ -5,7 +5,7 @@
 # 参数与 .github/workflows/xg-040g-md-immortalwrt.yml 的 Run workflow 输入一一对应，
 # 目的是让本地编译和 CI 编出同样的固件。用法见 docs/local-build.md。
 #
-#   ./build.sh                                  # master 线 + tcboot 变体
+#   ./build.sh                                  # master 线 + ubi 变体
 #   ./build.sh -v stock                         # 换设备变体
 #   ./build.sh -b openwrt-25.12-XG-040G-MD      # 换源码分支
 #   ./build.sh -p "luci-app-passwall -luci-app-ttyd"   # 选包页生成的那串
@@ -24,7 +24,7 @@ REPO_URL="https://github.com/Loong1996/immortalwrt.git"
 
 # 默认值与 workflow 的 workflow_dispatch 默认输入保持一致
 BRANCH="master-XG-040G-MD"
-VARIANT="tcboot"
+VARIANT="ubi"
 DRAM_SIZE="auto"
 EXTRA_PACKAGES=""
 SRC_DIR=""
@@ -69,7 +69,7 @@ usage() {
 
   -b, --branch <分支>     源码分支，默认 master-XG-040G-MD
                           可选 openwrt-25.12-XG-040G-MD 等
-  -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 tcboot
+  -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 ubi
                           （25.12 线只有一个设备，此项被忽略）
   -d, --dram <容量>       内存容量 auto|512M|1G|2G，默认 auto（自适应）
   -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除

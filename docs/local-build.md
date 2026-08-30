@@ -58,15 +58,15 @@
 
 ## 三、完整步骤
 
-以默认组合 `master-XG-040G-MD` + `tcboot` 变体为例。**全程不要用 root 用户** —— OpenWrt 构建系统会直接拒绝执行。
+以默认组合 `master-XG-040G-MD` + `ubi` 变体为例。**全程不要用 root 用户** —— OpenWrt 构建系统会直接拒绝执行。
 
 > 💡 **这一章的全部步骤已封装成仓库根目录的 [`build.sh`](../build.sh)。** 装好第 1 步的依赖后：
 >
 > ```bash
 > git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
 > cd ImmortalWrt-XG-040G-MD
-> ./build.sh                          # master 线 + tcboot 变体
-> ./build.sh -v ubi -j 4              # 换变体、限制并行度
+> ./build.sh                          # master 线 + ubi 变体
+> ./build.sh -v tcboot -j 4           # 换变体、限制并行度
 > ./build.sh -p "luci-app-passwall"   # 附加软件包，格式同选包页
 > ./build.sh -h                       # 全部参数
 > ```
@@ -76,7 +76,7 @@
 > | 脚本参数 | workflow 输入 | 默认 |
 > | --- | --- | --- |
 > | `-b, --branch` | 编译分支 | `master-XG-040G-MD` |
-> | `-v, --variant` | 设备变体 | `tcboot` |
+> | `-v, --variant` | 设备变体 | `ubi` |
 > | `-d, --dram` | 内存容量 | `auto` |
 > | `-p, --packages` | 附加软件包 | 空 |
 > | `-j, --jobs` | （CI 用 `nproc`） | CPU 与内存推算的较小值 |
@@ -133,13 +133,13 @@ cd openwrt
 
 | 源码分支 | 配置文件 | `device_variant` | 设备符号 |
 | --- | --- | --- | --- |
-| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `tcboot`（默认） | `nokia_xg-040g-md-tcboot` |
+| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `tcboot` | `nokia_xg-040g-md-tcboot` |
 | `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
-| `master-XG-040G-MD` | 同上 | `ubi` | `nokia_xg-040g-md-ubi` |
+| `master-XG-040G-MD` | 同上 | `ubi`（默认） | `nokia_xg-040g-md-ubi` |
 | `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
 
 ```bash
-DEVICE_SYMBOL=nokia_xg-040g-md-tcboot
+DEVICE_SYMBOL=nokia_xg-040g-md-ubi
 cp ../ImmortalWrt-XG-040G-MD/config/xg-040g-md-master.config .config
 
 # 先清掉配置里所有 an7581 设备行，再插入选中的那个
