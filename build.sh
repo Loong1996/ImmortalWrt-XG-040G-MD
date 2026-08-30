@@ -391,9 +391,11 @@ echo "    分支   $BRANCH"
 echo "    HEAD   $(git log -1 --date=short --format='%h %cd %s')"
 echo "    设备   $DEVICE_SYMBOL"
 echo "    配置   $CONFIG_FILE"
-if ! make -j"$JOBS"; then
+# FILES 是 OpenWrt 官方的 rootfs 覆盖机制，只在生成镜像这一步生效，
+# 不需要碰 immortalwrt 源码分支——banner 内容改这里的 files/etc/banner 就行。
+if ! make -j"$JOBS" FILES="$REPO_ROOT/files"; then
     warn "并行编译失败，改用单线程重跑以定位问题（只重编失败的包，不会从头来）"
-    make -j1 V=s
+    make -j1 V=s FILES="$REPO_ROOT/files"
 fi
 stage_done "编译"
 
