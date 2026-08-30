@@ -175,9 +175,11 @@ grep "^CONFIG_PACKAGE_luci-app-passwall=y" .config    # 同样要核对
 
 ### 6. 内存容量（一般不用管）
 
-默认「自适应」：DTS 的 `memory` 节点留 512M 保底，实际容量由引导程序探测后写进 DTB，512M / 1G / 2G 机器刷同一份固件。**本地编译什么都不用做就是这个行为。**
+默认「自适应」：DTS 的 `memory` 节点留 512M 保底，U-Boot 启动时探测实际颗粒并 fixup 进 DTB，512M / 1G / 2G 机器刷同一份固件。**本地编译什么都不用做就是这个行为。**
 
-只有 `stock` 变体（用原厂引导，是否做 fixup 未经验证）且换过颗粒时，才需要按 workflow「修改内存容量」一步手动改写 DTS 的 `reg` 与 `linux,usable-memory-range`。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
+探测本身是我们补的（`206-airoha-an7581-probe-dram-size.patch`）—— 上游 U-Boot 只读 DTS 不探测，而它 fixup 时又会覆盖内核的 `memory` 节点，结果 1G 机器被摁回 512M。用本仓库的 uboot-airoha 补丁集就没这问题。
+
+需要手动指定的只有两种情况：`stock` 变体（用原厂引导，是否 fixup 未经验证）换过颗粒；或者**故意把系统限制到更小**做对照实验。后者改的是 `linux,usable-memory-range` 而不是 `memory` —— 前者内核真会裁，后者会被 fixup 覆盖。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
 
 ### 7. 编译
 

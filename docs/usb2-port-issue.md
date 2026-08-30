@@ -120,6 +120,31 @@ master 独有 `607-01`/`607-02`，但 `607-02` 只新增 `phy-airoha-an7583-usb.
 
 驱动会跑一次 slew rate 校准（`FMCR0`/`FMMONR0`/`FMMONR1` 测频率 → 算出 `SRCTRL` 写 `USBPHYACR5`），本以为两个内核可能算出不同结果。**实测两条线全部寄存器逐位相同**，见下方数据。
 
+### 11. 内存容量差异 / 高区 DMA ❌
+
+曾经是最优先的嫌疑（两条线内存布局不同，见下），2026-08-30 用一版**内存布局与 25.12 完全一致的 master 固件**证伪。
+
+对照组是意外来的：`ubi` 变体用官方自建 U-Boot，而上游 `dram_init()` 只读 DTS 不探测，于是 1G 机器被 fixup 摁回 512M —— 正好就是「真正只认 512M 的 master 固件」，不用专门编。
+
+```text
+内核 6.18 + 512M 布局：Zone DMA [mem 0x0000000080200000-0x000000009fffffff]
+                        ← 与 25.12 线逐字相同
+```
+
+故障依旧：
+
+```text
+[87.795996] usb 3-1: new high-speed USB device number 3 using xhci-mtk
+[88.040709] scsi host0: uas
+[88.182399] scsi 0:0:0:0: Direct-Access  USB  Sandisk 3.2Gen1 1.00 PQ: 0 ANSI: 7
+[88.381840] sd 0:0:0:0: [sda] tag#6 data cmplt err -71 uas-tag 1 inflight: CMD
+[88.389176] sd 0:0:0:0: [sda] tag#6 CDB: opcode=0x28 28 00 00 00 00 00 00 00 01 00
+```
+
+枚举过、型号读得出、第一条 `READ_10` 就崩 —— 和 1G 布局下的症状一模一样（错误码 `-75`/`-71` 的差别只是 uas 上报路径不同，都是传输失败）。**内存/DMA 不是根因**，剩下 B 和 C。
+
+> 曾有的不利证据也对得上：`DCBAAP = 0x8A5AD000` 本来就在低区。当时的辩解是「真正的数据缓冲区动态分配、未观测」，现在整个高区都不存在了，故障却没走。
+
 ## 原始寄存器数据
 
 **master 线与 25.12 线读数完全一致**，以下每个值两边都相同。盘拔出、系统空闲时采集。
@@ -170,36 +195,11 @@ master 独有 `607-01`/`607-02`，但 `607-02` 只新增 `phy-airoha-an7583-usb.
 
 ## 剩余嫌疑
 
-按优先级排列。
-
-### A. 内存容量差异（最优先，未验证）
-
-两条线跑起来的内存布局不同，**这是我们自己引入的差异，不是上游的**：
-
-```text
-25.12 :  Memory: 326096K/522236K available    Zone DMA [0x80200000-0x9fffffff]   512M
-master:  Memory: 948576K/1046528K available   Zone DMA [0x80200000-0xbfffffff]   1G
-```
-
-25.12 线只认 512M，master 线经内存自适应认满 1G。若 SoC 的 USB DMA 实际覆盖不到 `0x9fffffff` 以上（厂商未公开的窗口限制），批量传输的数据缓冲区一旦分配到高区就会出错 —— 这与「控制传输能过、批量传输必错」的症状吻合。
-
-**但已有一条不利证据**：`DCBAAP = 0x8A5AD000` 在低区。不过那只是设备上下文数组，真正的传输数据缓冲区是动态分配的，未观测到。
-
-**怎么验证**：编一版真正只认 512M 的 master 固件。注意 **workflow 现有的 `dram_size=512M` 选项做不到这件事**：
-
-```yaml
-USABLE_SIZE=0x7fe00000     # 硬编码 2G，任何档位都不裁剪
-```
-
-它只改 `/memory` 节点的 `reg`，而 U-Boot 的 `fdt_fixup_memory_banks()` 启动时会把探测到的真实容量写回去、直接覆盖。必须把 `an758x-nokia_xg-040g-common.dtsi` 里 `linux,usable-memory-range` 的 size 改成 `0x1fe00000`（512M − 2M），那才是内核 `memblock_cap_memory_range()` 真正会裁的东西。建议开临时分支编，别污染 master。
-
-若限制到 512M 后 USB2 口恢复正常 → 内存/DMA 就是根因。
-
-> 本来最省事的判据是「换 1G 颗粒之前 master 线的 USB2 口好不好用」，可惜当时没测过，颗粒也换不回去了。
+按优先级排列。原 A（内存容量差异）已于 2026-08-30 证伪，移入[已排除的假设 #11](#11-内存容量差异--高区-dma-)。
 
 ### B. 内核 6.12 → 6.18 的上游变化（未缩小范围）
 
-所有静态配置（DTS、PHY 寄存器、xhci 寄存器、SCU）两条线完全相同，行为却不同，说明差异在**驱动代码路径**而非寄存器配置。嫌疑落在上游 `xhci-mtk` / `usb core` 在 6.12→6.18 之间的改动上。范围很大，需要 bisect 或逐项回退，成本高，建议排在 A 之后。
+所有静态配置（DTS、PHY 寄存器、xhci 寄存器、SCU）两条线完全相同，行为却不同，说明差异在**驱动代码路径**而非寄存器配置。嫌疑落在上游 `xhci-mtk` / `usb core` 在 6.12→6.18 之间的改动上。范围很大，需要 bisect 或逐项回退，成本高 —— 但 A 已经排除，这条现在是最优先的。
 
 ### C. master 的 `&usb1` 多出的 DTS 子节点（未单独验证）
 
@@ -221,7 +221,7 @@ USABLE_SIZE=0x7fe00000     # 硬编码 2G，任何档位都不裁剪
 };
 ```
 
-25.12 那边只有三行：`status` + `phys` + `u3p-dis-msk`。`port@1` 会让 USB core 走 DT port 节点的解析路径，理论上只影响 LED trigger，但没有单独验证过。**代价很低**：编一版把 `&usb1` 改成与 25.12 逐字相同的固件即可排除，可以和 A 合并成一次编译（分两个 commit 便于区分）。
+25.12 那边只有三行：`status` + `phys` + `u3p-dis-msk`。`port@1` 会让 USB core 走 DT port 节点的解析路径，理论上只影响 LED trigger，但没有单独验证过。**代价很低**：编一版把 `&usb1` 改成与 25.12 逐字相同的固件即可排除。既然 C 比 B 便宜得多，建议先做 C 再啃 B。
 
 ## 临时缓解
 
@@ -264,7 +264,8 @@ dmesg -n 7
 | 内存节点 | `target/linux/airoha/dts/an758x-nokia_xg-040g-common.dtsi`（`linux,usable-memory-range`） |
 | 25.12 独有补丁 | `target/linux/airoha/patches-6.12/910-02-usb-pcie.patch`（已证实是死代码） |
 | 错误的修复尝试 | 曾加过 `patches-6.18/914-clk-en7523-route-shared-serdes-to-USB.patch`，实测无效，提交已移除 |
-| 内存容量处理 | 本仓库 `.github/workflows/xg-040g-md-immortalwrt.yml` 的 `Patch DRAM Size` 步骤 |
+| 内存上限处理 | 本仓库 `.github/workflows/xg-040g-md-immortalwrt.yml` 的 `Patch DRAM Size` 步骤 |
+| 内存容量探测 | `package/boot/uboot-airoha/patches/206-airoha-an7581-probe-dram-size.patch` |
 
 ## 排查方法备忘
 
