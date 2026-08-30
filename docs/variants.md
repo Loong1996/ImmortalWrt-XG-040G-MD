@@ -223,6 +223,8 @@ U-Boot:  DRAM:  1 GiB
 
 `memory` 节点既然总会被 fixup 覆盖，手动指定就落在另一个属性上：`linux,usable-memory-range`。它走内核的 `memblock_cap_memory_range()`，函数体里全是 remove —— **只能把已注册的内存往少了裁，不会凭空多出来**。
 
+> 上游 dtsi 里这个属性写死 `0x1fe00000`（512M − 2M），所以 **`auto` 档也必须改它**，只是改成 `0x7fe00000`（2G）表示不裁剪。否则 U-Boot 探测出 1G 也会被内核裁回去 —— 这一条是 `206` 落地时才发现的，之前 workflow 在 `auto` 档整步跳过。
+
 所以档位是上限语义：
 
 | 选了 | 实际 512M 的机器 | 实际 1G 的机器 |

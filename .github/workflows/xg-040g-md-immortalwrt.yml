@@ -122,8 +122,8 @@ jobs:
         echo "VERSION_INFO=$VERSION_INFO" >> $GITHUB_ENV
         echo "REPO_BRANCH=$REPO_BRANCH" >> $GITHUB_ENV
 
-    - name: Patch DRAM Size(修改内存容量)
-      if: env.DRAM_SIZE != '' && env.DRAM_SIZE != 'auto'
+    - name: Patch DRAM Size(设置内存上限)
+      if: env.DRAM_SIZE != ''
       run: |
         cd $OPENWRT_PATH
         # 两条线的 memory 节点位置与写法都不同：
@@ -135,31 +135,41 @@ jobs:
         # fdt_fixup_memory_banks() 用探测值覆盖掉，改了也白改（保留改写只当文档）。
         # 而 memblock_cap_memory_range() 只做 remove，所以档位是「上限」语义——
         # 只会把系统往小里限，在颗粒本来就更小的机器上选大档位不会出事。
+        #
+        # auto 也必须跑这一步：上游 dtsi 里 usable 写死 512M-2M，不放开的话
+        # U-Boot 探测出 1G 也会被内核裁回 512M。auto 只放开上限，memory 留给
+        # U-Boot 的 fixup 去填。
         DTS=$(grep -rl "linux,usable-memory-range" target/linux/airoha/dts/ 2>/dev/null | grep -i "xg-040g" | head -n1)
         [ -n "$DTS" ] || { echo "::error::未找到含 usable-memory-range 的 XG-040G dts"; exit 1; }
         echo "目标文件: $DTS"
 
         case "$DRAM_SIZE" in
-          512M) MEM_SIZE=0x20000000; USABLE_SIZE=0x1fe00000 ;;
-          1G)   MEM_SIZE=0x40000000; USABLE_SIZE=0x3fe00000 ;;
-          2G)   MEM_SIZE=0x80000000; USABLE_SIZE=0x7fe00000 ;;
+          auto) MEM_SIZE=;            USABLE_SIZE=0x7fe00000 ;;
+          512M) MEM_SIZE=0x20000000;  USABLE_SIZE=0x1fe00000 ;;
+          1G)   MEM_SIZE=0x40000000;  USABLE_SIZE=0x3fe00000 ;;
+          2G)   MEM_SIZE=0x80000000;  USABLE_SIZE=0x7fe00000 ;;
           *)    echo "::error::不支持的 DRAM_SIZE=$DRAM_SIZE"; exit 1 ;;
         esac
         python3 - "$DTS" "$MEM_SIZE" "$USABLE_SIZE" <<'PY'
         import re, sys
         path, mem, usable = sys.argv[1], sys.argv[2], sys.argv[3]
         s = open(path, encoding="utf-8").read()
-        # memory 节点：DRAM 基址 0x80000000，大小改为实际颗粒容量
-        s, n1 = re.subn(r"(reg\s*=\s*<0x0\s+0x80000000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
-                        lambda m: m.group(1) + mem + m.group(2), s)
+        n1 = "跳过"
+        # memory 节点：仅手动档位改写；auto 留给 U-Boot 的 fixup 去填
+        if mem:
+            s, n1 = re.subn(r"(reg\s*=\s*<0x0\s+0x80000000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
+                            lambda m: m.group(1) + mem + m.group(2), s)
+            if n1 != 1:
+                print("::error::memory 替换 %d 次（期望 1 次）" % n1)
+                sys.exit(1)
         # chosen/linux,usable-memory-range：跳过 0x80000000 起 2MB 的 ATF 保留区
         s, n2 = re.subn(r"(linux,usable-memory-range\s*=\s*<0x0\s+0x80200000\s+0x0\s+)0x[0-9a-fA-F]+(\s*>\s*;)",
                         lambda m: m.group(1) + usable + m.group(2), s)
-        if n1 != 1 or n2 != 1:
-            print("::error::替换次数异常 memory=%d usable=%d（期望各 1 次）" % (n1, n2))
+        if n2 != 1:
+            print("::error::usable 替换 %d 次（期望 1 次）" % n2)
             sys.exit(1)
         open(path, "w", encoding="utf-8").write(s)
-        print("已改写 memory=%s usable=%s" % (mem, usable))
+        print("memory=%s usable=%s" % (mem or "（未改，交给 U-Boot fixup）", usable))
         PY
 
         echo "--- 修改后 ---"
@@ -234,7 +244,7 @@ jobs:
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
         # 25.12 线只有一个设备，FLAVOR 为空则不插入该段
         echo "RELEASE_TAG=XG-040G-MD${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
-        # 自适应：不改写 DTS。memory 节点留 512M 保底，U-Boot 探测实际颗粒后 fixup 进 DTB
+        # 自适应：只放开 usable 上限，memory 留给 U-Boot 探测后 fixup 进 DTB
         if [ "$DRAM_SIZE" = "auto" ]; then
           echo "DRAM_LABEL=自适应" >> $GITHUB_ENV
         else
@@ -243,7 +253,7 @@ jobs:
         {
           echo 'DRAM_NOTE<<DRAMNOTEEOF'
           if [ "$DRAM_SIZE" = "auto" ]; then
-            echo "- **容量自适应**：DTS 的 \`memory\` 只留 512M 作保底，U-Boot 探测出实际颗粒后 fixup 进 DTB"
+            echo "- **容量自适应**：U-Boot 探测出实际颗粒后 fixup 进 DTB，\`usable-memory-range\` 放开到 2G 不裁剪"
             echo "- \`tcboot\` / \`ubi\` 变体都会做这个探测 —— **512M / 1G / 2G 机器可刷同一份固件**"
             echo "- \`stock\` 变体用原厂引导程序，是否 fixup 未经验证；若用 stock 且换过颗粒，请改选对应容量重新编译"
           else

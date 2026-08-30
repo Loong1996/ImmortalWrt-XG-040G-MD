@@ -175,11 +175,20 @@ grep "^CONFIG_PACKAGE_luci-app-passwall=y" .config    # 同样要核对
 
 ### 6. 内存容量（一般不用管）
 
-默认「自适应」：DTS 的 `memory` 节点留 512M 保底，U-Boot 启动时探测实际颗粒并 fixup 进 DTB，512M / 1G / 2G 机器刷同一份固件。**本地编译什么都不用做就是这个行为。**
+默认「自适应」：U-Boot 探测实际颗粒并 fixup 进 DTB，512M / 1G / 2G 机器刷同一份固件。
 
-探测本身是我们补的（`206-airoha-an7581-probe-dram-size.patch`）—— 上游 U-Boot 只读 DTS 不探测，而它 fixup 时又会覆盖内核的 `memory` 节点，结果 1G 机器被摁回 512M。用本仓库的 uboot-airoha 补丁集就没这问题。
+探测本身是我们补的（`206-airoha-an7581-probe-dram-size.patch`）—— 上游 U-Boot 只读 DTS 不探测，而它 fixup 时又会覆盖内核的 `memory` 节点，结果 1G 机器被摁回 512M。
 
-需要手动指定的只有两种情况：`stock` 变体（用原厂引导，是否 fixup 未经验证）换过颗粒；或者**故意把系统限制到更小**做对照实验。后者改的是 `linux,usable-memory-range` 而不是 `memory` —— 前者内核真会裁，后者会被 fixup 覆盖。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
+> ⚠️ **本地编译要多做一步**，workflow 是替你做了的：上游 dtsi 里 `linux,usable-memory-range` 写死 512M − 2M，不放开的话，U-Boot 探测出 1G 也会被内核 `memblock_cap_memory_range()` 裁回 512M。
+>
+> ```bash
+> sed -i 's/<0x0 0x80200000 0x0 0x1fe00000>/<0x0 0x80200000 0x0 0x7fe00000>/' \
+>   target/linux/airoha/dts/an758x-nokia_xg-040g-common.dtsi
+> ```
+>
+> `2G` 只是「不裁剪」的意思 —— 该属性只能往少了裁，写大不会让系统去访问不存在的内存。
+
+想反过来**故意把系统限制到更小**（做对照实验）时，改的也是这个属性：`0x1fe00000` = 512M、`0x3fe00000` = 1G。改 `memory` 节点没用，会被 fixup 覆盖。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
 
 ### 7. 编译
 
