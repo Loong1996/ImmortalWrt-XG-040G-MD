@@ -17,7 +17,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | [LED 行为](docs/leds.md) | 面板灯与网口灯的语义、怎么改成自己想要的 |
 | [⚠️ 待解决：USB2 口带不动 USB3 U 盘](docs/usb2-port-issue.md) | 已排除的假设与依据、两条线的寄存器原始数据、下次从哪接手 |
 | [原厂备份与刷回原厂](docs/backup-and-restore.md) | 原厂分区表、整片备份步骤、tcboot/bootext.ram 分析、回刷原厂的三条路 |
-| [U-Boot 网页救砖](docs/uboot-http-recovery.md) | ⚗️ 进行中：给 `ubi` 变体的 U-Boot 加浏览器刷机界面 |
+| [U-Boot 网页救砖](docs/uboot-http-recovery.md) | `ubi` 变体刷坏了，插网线用浏览器救回来：怎么用、首次迁移、面板灯语义 |
 
 ## 编译
 

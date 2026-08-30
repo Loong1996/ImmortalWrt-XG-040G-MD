@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       repo_branch:
-        description: '选择编译分支（master 跟进上游、内核 6.18；25.12 为固定快照、内核 6.12；-httpd 为 U-Boot 网页救砖验证分支）'
+        description: '选择编译分支（master 跟进上游、内核 6.18；25.12 为固定快照、内核 6.12）'
         required: true
         default: 'master-XG-040G-MD'
         type: choice
@@ -16,7 +16,6 @@ on:
           - master-XG-040G-MD
           - openwrt-25.12-XG-040G-MD
           - xpon-test
-          - master-XG-040G-MD-httpd
       device_variant:
         description: '设备变体（仅 master 分支有效，25.12 分支忽略）'
         required: true
@@ -136,9 +135,10 @@ jobs:
         # 而 memblock_cap_memory_range() 只做 remove，所以档位是「上限」语义——
         # 只会把系统往小里限，在颗粒本来就更小的机器上选大档位不会出事。
         #
-        # auto 也必须跑这一步：上游 dtsi 里 usable 写死 512M-2M，不放开的话
-        # U-Boot 探测出 1G 也会被内核裁回 512M。auto 只放开上限，memory 留给
-        # U-Boot 的 fixup 去填。
+        # auto 也跑这一步，但目的是防御而不是修复：master-XG-040G-MD 线的 dtsi
+        # 已经把 usable 放到 2G，这里是等值改写；上游那边仍是 512M-2M，哪天同步
+        # 覆盖回去，auto 出来的固件也不会突然只认一半内存。memory 节点不动，
+        # 留给 U-Boot 的 fixup 去填。
         DTS=$(grep -rl "linux,usable-memory-range" target/linux/airoha/dts/ 2>/dev/null | grep -i "xg-040g" | head -n1)
         [ -n "$DTS" ] || { echo "::error::未找到含 usable-memory-range 的 XG-040G dts"; exit 1; }
         echo "目标文件: $DTS"

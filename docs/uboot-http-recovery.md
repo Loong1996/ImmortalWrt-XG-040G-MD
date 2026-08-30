@@ -1,211 +1,275 @@
-# U-Boot 网页救砖（进行中）
+# U-Boot 网页救砖
 
-给 `ubi` 变体的 OpenWrt U-Boot 加一个浏览器上传固件的界面，让它在救砖体验上追平第三方 `tcboot`。
+`ubi` 变体的 U-Boot 里内置了一个恢复页面。**机器刷坏了，插上网线用浏览器就能救回来** —— 不用串口，不用在电脑上架 TFTP 服务器，不用装任何工具。
 
-> **状态**：第 1 步已实机验证通过 —— U-Boot 自带的 TCP 栈在 AN7581 上能跑，网页能打开。第 2 步（上传与刷写）开发中。
-> **源码分支**：[`Loong1996/immortalwrt` 的 `master-XG-040G-MD-httpd`](https://github.com/Loong1996/immortalwrt/tree/master-XG-040G-MD-httpd)，与 `master-XG-040G-MD` 的差异只有 `uboot-airoha` 的三个 patch。
-> **编译**：`Run workflow` 的编译分支选 `master-XG-040G-MD-httpd`，设备变体选 `ubi`。
+已合入 `master-XG-040G-MD` 主线，开发过程的完整提交历史归档在 `archive/master-XG-040G-MD-httpd`。
 
-## 为什么做这件事
+> 只对 `ubi` 变体有效。`tcboot` 变体用的是第三方引导程序，`stock` 用原厂引导，都不经过这个 U-Boot。
 
-`ubi` 变体在别的方面都优于 `tcboot`（设备级适配、可复现构建、上游同步、少一个 out-of-tree 补丁，见[设备变体](variants.md)），唯一的短板是**免串口救砖的门槛**：
+---
 
-| | tcboot | 官方 ubi |
-| --- | --- | --- |
-| 用户要做什么 | 浏览器打开 `192.168.1.1`，选文件，点上传 | 装 TFTP **服务器**、网卡设 `192.168.1.254`、文件名一字不差 |
-| 出错反馈 | 网页上有进度 | 只有电源灯 + 串口日志 |
+## 怎么用
 
-对不接串口的人来说 TFTP 那套是个黑盒 —— `bootfile` 默认叫 `immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-initramfs-recovery.itb`，名字错一个字符就静默失败。
+### 进恢复页
 
-## 官方 U-Boot 已经有的救砖能力
+两条路，都不需要串口：
 
-动手之前先把现成的东西摸清楚了，结论是**功能覆盖上官方比 tcboot 更全，缺的只是网页这个前端形式**。以下均来自对官方 `bl31-uboot.fip` 的二进制分析（解出 LZMA 段后提取字符串）。
-
-**按键触发的 TFTP 恢复**（不需要串口）：
-
-```sh
-bootcmd=run check_buttons ; run boot_ubi
-check_buttons=if button reset ; then run boot_tftp ; fi
-```
-
-**引导失败自动无限重试**（连按键都不用）：
-
-```sh
-boot_ubi=run boot_production ; run boot_tftp_forever
-boot_tftp_forever=led $bootled_status on ; while true ; do run boot_tftp ; sleep 1 ; done
-```
-
-**连引导自身都能远程更新**：
-
-```sh
-boot_tftp_write_bl2=mw.b $loadaddr 0xff 0x800 ; setexpr loadaddr_bl2 $loadaddr + 0x800 ; \
-                    tftpboot $loadaddr_bl2 $bootfile_bl2 && run mtd_write_bl2
-boot_tftp_write_fip=tftpboot $loadaddr $bootfile_fip && run ubi_write_fip && run reset_factory
-```
-
-> 💡 `mw.b $loadaddr 0xff 0x800` 印证了 AN7581 BootROM 的固定约定：**flash 上 BL2 分区的前 `0x800` 字节留空，真正的 FIP 从 `0x800` 开始**。这和拆 `tcboot.bin` 时发现的「ATF FIP @ `0x800`」完全一致。
-
-**UBI 卷由 U-Boot 自己创建**，`ri` / `bosa` 空卷会被自动补上，MAC 在 U-Boot 层就从 `ri` 卷读出来（这是上游 `uboot-airoha: add readmem command` 那个提交的用途）：
-
-```sh
-ethaddr_factory=ubi read 0x90000000 ri && env readmem -b ethaddr 0x9000003e 0x6
-ubi_create_board_data=ubi check bosa || ubi create bosa 0x40000 || run ubi_format ; \
-                      ubi check ri   || ubi create ri   0x40000 || run ubi_format
-```
-
-**所以这个项目要补的只有一个 HTTP 前端**，刷写逻辑全部复用现成的环境脚本。
-
-## 技术选型：用 U-Boot 自带的 TCP，不移植 uIP
-
-`tcboot` 的网页救砖用的是 uIP —— HTTP 响应头里写着 `Server: uIP/0.9`。它是把 [u-boot_mod](https://github.com/pepe2k/u-boot_mod) 的 `httpd` 模块**连同整个 uIP 协议栈**搬到 U-Boot 2025.01 的，因为它基于的老 U-Boot 没有 TCP。
-
-而 U-Boot 自 2020 年起传统网络栈就带 TCP（`net/tcp.c`），`net/fastboot_tcp.c` 是现成的 TCP 服务器范例。
-
-| | 移植 uIP（tcboot 的路） | 用 U-Boot 自带 TCP |
-| --- | --- | --- |
-| 引入代码 | uIP 0.9 约 3000 行 + httpd 1000 行 | 只写 httpd，约 130 行 |
-| 网络栈 | 第三方，与 U-Boot 的并存 | U-Boot 自己维护的 |
-| 影响现有功能 | 需处理收发接管 | 无，`tftpboot`/`dhcp`/`bootmenu` 照常 |
-| 上游可接受度 | 低 | 高 |
-
-`uboot-airoha` 里已有 `200-cmd-bootmenu-custom-title.patch`、`201-cmd-env-readmem.patch` 这类上游自定义命令，加功能是被接受的做法。
-
-### 实现骨架
-
-```c
-static int on_create(struct tcp_stream *tcp)
-{
-	if (tcp->lport != 80)
-		return 0;
-	tcp->rx = httpd_rx;                     /* 数据落到 $loadaddr */
-	tcp->tx = httpd_tx;                     /* 吐页面 */
-	tcp->on_rcv_nxt_update = ...;           /* 解析请求 */
-	tcp->on_snd_una_update = ...;           /* 发完并确认后关连接 */
-	return 1;
-}
-```
-
-两个关键细节：
-
-* `tcp->rx` 的 `rx_offs` 是**流内偏移**，所以固件数据可以直接落到 `$loadaddr + (rx_offs - body_start)`，**不需要几十 MB 的中间缓冲**。
-* 关连接必须放在 `on_snd_una_update`，不能放 `tx` —— `struct tcp_stream::tx` 的注释明确警告在 tx 回调里调 `tcp_stream_close()` 会破坏流。
-* `tcp->priv` 用作**每连接**的状态标志，不能用全局变量：浏览器会同时开好几个连接（favicon、预取），全局标志会互相踩。
-
-## 三个 patch
-
-放在 `package/boot/uboot-airoha/patches/`：
-
-| patch | 作用 |
+| 什么时候 | 怎么进 |
 | --- | --- |
-| `202-net-add-minimal-httpd-server.patch` | 新增 `net/httpd.c`；`enum proto_t` 加 `HTTPD`；`net_loop()` 分发；`net/Kconfig` 加 `CMD_HTTPD` |
-| `950-configs-xg-040g-md-enable-httpd.patch` | defconfig 开 `CONFIG_PROT_TCP` 与 `CONFIG_CMD_HTTPD` |
-| `999-defenvs-...-TESTBUILD-no-autoboot.patch` | **仅测试用**，见下方警告 |
+| 想主动刷机 | **按住 reset 上电**，一直按着，等面板五个绿灯开始**流水**再松手（约 6 秒） |
+| 机器起不来了 | **什么都不用做** —— 从 NAND 引导失败后会自己循环起网页，插上网线即可 |
 
-> ⚠️ **编号必须大于 401。** `configs/an7581_nokia_xg-040g-md_defconfig` 与 `defenvs/an7581_nokia_xg-040g-md_env` 都是 `401-add-nokia-xg-040g-md.patch` 创建的，编号更小的 patch 应用时这两个文件还不存在。
+那 6 秒里有 3 秒是 bootmenu 的等待。`button reset` 读的是那一瞬间的电平，不是累计计时，所以「一直按住」比「按几下」可靠。**流水灯亮起来就是进去了。**
 
-## 第 1 步：在内存里验证，不碰 flash
+### 传文件
 
-把 U-Boot 灌进 DRAM 跑，**flash 一个字节都不动**，断电重启就回到 tcboot。零风险，还绕开了「换引导」的鸡生蛋问题（BL2 要从 UBI 的 `fip` 卷加载 U-Boot，而 `fip` 卷要 U-Boot 起来才能建）。
+1. 网线插到串口打印的那个口（`Using xxx device` 那行；没有串口就一个个试，通常是 LAN1）
+2. 电脑或手机的网口设成自动获取 IP，会拿到 `192.168.1.100`
+3. 浏览器打开 **`192.168.1.1`**
+4. 「固件」那一格选 `...-ubi-squashfs-sysupgrade.itb`，点「上传并刷写」
+5. 确认对话框里核对一遍，点「开始写入」
 
-```
-① BootROM ──收 preloader.bin──→  SRAM 里跑，初始化 DDR
-② BL2     ──收 bl31-uboot.fip──→ U-Boot 在 DRAM 跑起来
-                                  ↑ flash 仍是原样，断电即回滚
-③ 串口敲 httpd，浏览器验证
-```
+**不用先配静态 IP** —— U-Boot 里带了个最小 DHCP 服务器，专门为了省掉这一步，那正是救砖流程最容易卡住的地方。
 
-### ⚠️ 必须先掐掉默认环境里的自动流程
+### 面板灯是唯一的进度来源
 
-官方默认环境是**为全新板子写的**，第一次上电会自动格式化 flash：
-
-```sh
-bootmenu_delay=0   # cmd/bootmenu.c: "If delay is 0 do not create menu, just run first entry"
-bootmenu_0=Initialize environment.=run _firstboot
-_firstboot     -> _init_env -> ubi_create_env
-ubi_create_env -> ubi create ubootenv ... || run ubi_format
-ubi_format     -> mtd erase ubi
-```
-
-在还跑着 tcboot 的机器上：新 U-Boot 的 DTB 认为 `ubi` 分区从 `0x20000` 起，那里不是有效 UBI → attach 失败 → 建卷失败 → **`mtd erase ubi` 擦掉 `0x20000` 往上的一切**。而 tcboot 的 FIP 占 `0x0~0x80000`，会被拦腰截断。再加上 `bootdelay=0`，**没有打断的机会**。
-
-`999` 那个 patch 就是把四处改成无害值：
-
-| | 官方原值 | 测试值 |
+| 面板 | 含义 | 能拔网线吗 |
 | --- | --- | --- |
-| `bootcmd` | `run check_buttons ; run boot_ubi` | 无害 echo |
-| `bootdelay` | `0` | `3` |
-| `bootmenu_delay` | `0` | `-1`（永远等用户选） |
-| `bootmenu_0` | `run _firstboot` | 无害 echo |
+| 五灯**流水** | 在等你上传 | ❌ 还在传 |
+| 五灯**齐闪** | 正在写 flash | ✅ 随便拔 |
+| 熄灭后重启 | 写完了 | ✅ |
 
-**验证通过后要删掉它**，正式固件需要那些自动流程。
+**上传结束后网页就没用了。** `net_loop()` 在写入开始前就返回，连接已经关闭，浏览器和设备之间没有通道 —— 页面上那句「写入期间页面收不到任何消息」说的就是这件事。
 
-### 刷之前先验二进制
+拔网线随时安全，写 flash 不经过网络。**要命的是断电** —— 齐闪期间断电才是真的砖。
 
-不用拿机器试，编完直接查 fip 就能确认三个 patch 是否生效：
+### 刷写等于恢复出厂
 
-```sh
-# 找 LZMA 段解出 U-Boot（FIP 里第二段是 U-Boot，第一段是 BL31）
-python3 -c "
-import struct,lzma,sys
-d=open(sys.argv[1],'rb').read(); pos=0
-while True:
-    i=d.find(b'\x5d\x00\x00',pos)
-    if i<0: break
-    u=struct.unpack('<Q',d[i+5:i+13])[0]
-    if 0<u<8*1024*1024:
-        out=lzma.LZMADecompressor(format=lzma.FORMAT_ALONE).decompress(d[i:])
-        open(f'uboot-{i:06x}.bin','wb').write(out); print(hex(i),len(out))
-    pos=i+1
-" bl31-uboot.fip
+`ubi_write_production` 会先删掉 `rootfs_data` 给新卷腾地方，所以**网页刷写必然清空配置**，不管勾没勾任何选项。
 
-strings -n 6 uboot-*.bin | grep -E '^httpd$|U-Boot HTTP server is alive'          # 202/950
-strings -n 6 uboot-*.bin | grep -E '^(bootcmd|bootdelay|bootmenu_delay|bootmenu_0)='  # 999
+系统还能进的话，请用 `sysupgrade -c` 保留配置。这个页面的定位是「系统起不来了」。
+
+---
+
+## 首次迁移：从 tcboot / 原厂 换到 ubi 布局
+
+只有这一次需要串口，之后再也不用。
+
+**① 串口进 BootROM，xmodem 传两个文件**
+
+按住 reset 上电，看到 `Press x` 时按 `x`，依次传：
+
+```
+immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-preloader.bin      ← BootROM 收，进 SRAM
+immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-bl31-uboot.fip     ← BL2 收，进 DRAM
 ```
 
-### 验证结果 ✅
+传两个是硬约束：BootROM 只把 BL2 收进 SRAM，那里放不下 431 KB，它也不解析 FIP 里的 BL33。
 
-实测（`ubi` 变体、灌内存不刷 flash）：
+**reset 一直按着不要松。**
 
-* U-Boot 体积 `771920 → 779096`（+7176 字节），就是 httpd 加 TCP 栈的重量；FIP `314013 → 317314`，而 `fip` 是 1 MB 静态卷，空间毫无压力
-* U-Boot 起来后**停在 bootmenu 等待**（`bootmenu_delay=-1` 生效），按 **ESC** 进命令行
-* `setenv ipaddr 192.168.1.1` 后敲 `httpd`，浏览器打开 `http://192.168.1.1` 正常显示页面
+**② U-Boot 在 RAM 里起来，直接进网页**
 
-于是确认：**U-Boot 自带的 TCP 栈在 AN7581 上工作正常，网卡在 U-Boot 阶段正常，不需要引入 uIP。**
+`_firstboot` 的第一件事就是 `run check_buttons` —— 在碰 flash 之前先看按键。这一刀是「一轮 xmodem 就够」的全部依据：没有它，RAM 里的 U-Boot 会直奔 `_init_env`，在异构 flash 布局上建卷失败、回落 `ubi_format` 然后 `reset`，把刚传进来的东西一起丢掉。
 
-> 💡 `setenv ipaddr` 不能省 —— 默认环境里只有 `serverip` 没有 `ipaddr`，而 `net_loop()` 对 `HTTPD` 会检查它。
+看到流水灯就松手。
+
+**③ 网页一次传完三样**
+
+展开「引导程序（仅首次迁移需要）」：
+
+| 格子 | 文件 |
+| --- | --- |
+| 固件 | `...-ubi-squashfs-sysupgrade.itb` |
+| BL2 | `...-ubi-preloader.bin` |
+| U-Boot | `...-ubi-bl31-uboot.fip` |
+| ☑ 重建 UBI | **必须勾** —— 旧布局上没有有效的 UBI，不擦就建不了卷 |
+
+**④ 自动重启，完成**
+
+`_firstboot` 会建出 `ubootenv` / `ubootenv2` / `ri` / `bosa`，然后正常引导。
+
+> ⚠️ **重建 UBI 会擦掉出厂 MAC。** `ri` 卷没了，`ethaddr_factory` 读不到，MAC 变成默认值。从[原厂备份](backup-and-restore.md)里把 `ri` 写回去即可，随时能做，不影响使用。
+
+### 日常更新引导器就不用勾了
+
+BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fip` 那一个卷。**只要 `ubi part ubi` 挂得上，就不要勾重建。**
+
+覆盖正在运行的 U-Boot 是安全的：SPI-NAND 不能 XIP，当前这份早就解压在 DRAM 里跑了，和 flash 上的副本没关系。
+
+---
+
+## 补丁清单
+
+都在 `package/boot/uboot-airoha/patches/`：
+
+| 补丁 | 做什么 |
+| --- | --- |
+| `202` | httpd 骨架。走 `tcp_stream` 回调，`rx()` 拿到的是流偏移，上传的字节直接落到 `$loadaddr` |
+| `203` | multipart 上传，刷写交给现成的 env 脚本 |
+| `204` | 最小 DHCP 服务器 + 面板流水灯 |
+| `205` | 引导器也能传（BL2 / FIP / 重建 UBI），写入时齐闪，写完自动重启，每步带内置兜底 |
+| `207` | 恢复页面：中文、响应式、深浅色手动切换、上传进度、确认对话框 |
+| `950` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
+| `951` | 触发路径与两条 httpd 专用的 env 脚本 |
+
+`206`（DRAM 容量探测）编号夹在中间但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。
+
+### `951` 改了什么
+
+```
+check_buttons=if button reset ; then httpd ; fi              ← 原来是 run boot_tftp
+boot_ubi=run boot_production ; run boot_httpd_forever        ← 原来是 boot_tftp_forever
+boot_httpd_forever=while true ; do httpd ; sleep 1 ; done    ← 新增
+_firstboot=... ; run check_buttons ; run ethaddr_factory ...  ← 开头插入按键检查
+httpd_write_bl2=mtd erase bl2 && mtd write bl2 $loadaddr 0x800 $filesize
+httpd_format_ubi=ubi detach ; mtd erase ubi && ubi part ubi
+```
+
+`httpd_write_bl2` 用 `mtd write` 的 offset 参数让 mtd 自己跳过前 `0x800` 字节（BootROM 在那里找 FIP），省掉官方脚本里 `mw.b $loadaddr 0xff 0x800` 那一步 —— 因为 part 是**就地刷写**的，不搬到 `$loadaddr`。
+
+`httpd_format_ubi` 是去掉 `reset` 的 `ubi_format`，好让同一次会话接着写卷。
+
+**TFTP 一条没删**：bootmenu 的第 1、3、5、6 项照旧，`boot_tftp*` 全套变量都在。自动路径走浏览器，手动路径留 TFTP。
+
+---
+
+## 几个关键决定
+
+### 用 U-Boot 自己的 TCP，不移植 uIP
+
+tcboot 里嵌了 uIP 0.9（响应头 `Server: uIP/0.9`），因为它的基础 U-Boot 还没有 TCP 栈。现代 U-Boot 有 `net/tcp.c`，`net/fastboot_tcp.c` 就是现成的 TCP 服务器模板。
+
+| | 移植 uIP | 用自带 TCP |
+| --- | --- | --- |
+| 新增代码 | ~4000 行 | ~130 行（202 的规模） |
+| 与 tftpboot / dhcp 共存 | 要处理两套栈抢网卡 | 天然共存 |
+| 上游可维护性 | 长期背一份 fork | 跟着上游走 |
+
+### 零拷贝
+
+`rx()` 回调给的是**流偏移**，所以可以直接 `memcpy` 到 `$loadaddr + offset`，几十 MB 的镜像不需要第二份内存。各个 part 也是**就地刷写**，不搬移 —— 只在刷之前按 64 字节向前对齐一下，踩到的是它自己的 multipart 头（最短也有 ~90 字节），碰不到前一个 part 的数据。
+
+### 刷写逻辑留在 env 里，但不依赖它
+
+每一步优先跑 env 脚本，找不到就用编译进二进制的等价命令。这不是冗余 —— 见下面的坑。
+
+### 面板灯是刷写阶段唯一的通道
+
+写入是同步阻塞的，`net_loop()` 的 timeout handler 那时已经停了。闪灯靠 cyclic 框架驱动：SPI-NAND 层每写一页调一次 `schedule()`（`drivers/mtd/nand/spi/core.c`），所以 64 MB 的写入过程中灯照样闪。
+
+`CONFIG_CYCLIC_MAX_CPU_TIME_US` 默认 5000 μs，写 5 个 GPIO 够不着。万一超了会打印 `cyclic function httpd-flash took too long` 并注销回调 —— **灯停在某个状态，但刷写完全不受影响，别当成死机去断电。**
+
+### 二次确认只拦不可逆的两种
+
+不做笼统的「确定要刷吗」。走到那个按钮已经过了按住 reset 上电、插网线、开浏览器、选文件四道门，不存在误点；救砖时多一次点击只是多一个出错环节，而每次都弹的确认框两次之后就变成条件反射。
+
+拦的是**重来一次也救不回**的两种：
+
+| 情况 | 后果 |
+| --- | --- |
+| 文件名对不上 | `.itb` 进了 BL2 格 → 写到 flash `0x800`，BootROM 认不出 → **只能串口 xmodem** |
+| 勾了重建 UBI | 出厂 MAC、U-Boot 环境、全部设置一起没 |
+
+刷错固件不在此列 —— 那种情况机器还能再进这个页面重来。
+
+文件名检查按扩展名（`.itb` / `preloader*.bin` / `.fip`），**只提醒不拦死**，文件名是可以被改的。
+
+---
 
 ## 踩过的坑
 
-**一、patch 的 context 必须取自 ImmortalWrt，不能用 OpenWrt 上游。** 两边的 `defenvs` 里 `bootfile*` 前缀不同：
+### 1. `simple_strtoul()` 不跳前导空白
 
-```diff
--bootfile=openwrt-airoha-an7581-nokia_xg-040g-md-ubi-initramfs-recovery.itb
-+bootfile=immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-initramfs-recovery.itb
+```
+httpd: refusing 0 byte upload
 ```
 
-第一版 `999` 的 Hunk #1 正好把这三行当 context 用了，编译到 U-Boot 阶段才 `Hunk #1 FAILED`，白跑一个半小时。改 `net/*`、`defconfig` 这类两边一致的文件不受影响。
+`Content-Length: 12345` 从冒号后解析，U-Boot 的 `simple_strtoul()` 遇到空格直接返回 0（`lib/strto.c` 只处理 `0x` 前缀），和 libc 的行为不一样。
 
-**二、`bootcmd` 不是直接执行的。** 它通过 bootmenu 的第 0 项间接触发：
+**这个坑差点被测试掩盖过去** —— 桩代码用的是 libc 的 `strtoul`，它会跳空白，所以本地全过、真机必挂。后来把桩改成忠实复现 U-Boot 的行为，才在本地复现出同一条错误信息。**桩要模仿被测环境的怪癖，不是模仿正确行为。**
 
-```sh
-bootmenu_0d=Run default boot command.=run boot_default
-boot_default=run bootcmd ; run boot_tftp_forever
+### 2. 救砖工具不能依赖 flash 上的 env
+
+```
+## Error: "httpd_write_bl2" not defined
 ```
 
-所以 `999` 里改的那句 `bootcmd` echo **永远不会出现**（`bootmenu_delay=-1` 让第 0 项不再自动执行）。判断 `999` 是否生效的正确依据是**停在菜单不动**，不是看那行日志。
+机器上一次测试时 `_firstboot` 建过 `ubootenv` 卷并 `saveenv`，那份旧 env 会盖掉 fip 里编译进去的默认值。**救砖工具依赖 flash 上的 env，而 flash 上的 env 恰恰是最可能过时或损坏的那份** —— 需要救砖的时候，正是它靠不住的时候。
 
-**三、workflow 的分支匹配是精确的。** `Generate Variables` 里原本是 `case "$REPO_BRANCH" in master-XG-040G-MD)`，新分支会掉进 `*)` 被当成 25.12 线处理，用上 `bell_xg-040g-md` 和 6.12 的配置。已改为前缀匹配 `master-XG-040G-MD*)`。
+现在每步都有内置兜底。
 
-## 后续
+好在 BL2 是第一步，它一失败整个序列就中止，UBI 没被格式化、`fit` 卷完好 —— 「引导器先于固件」这个顺序在这里兜住了。
 
-**第 2 步：上传与刷写。** 三件事 —— 解析 `multipart/form-data` 找到文件数据起点；数据按流内偏移直接落 `$loadaddr`；收完 `setenv filesize` 并 `run ubi_write_production`。后端不用自己写，官方脚本已经把删旧卷、建新卷、`iminfo` 校验都做好了，比 tcboot 手拼的 `mtd write` 更完善。
+### 3. 分类要放在 `on_rcv_nxt_update()`，不能放 `rx()`
 
-未验证的风险：**U-Boot 的 TCP 是简化实现**，重传和窗口处理都比较原始，几十 MB 的 POST 是另一回事。先用几 MB 的小文件验证通路，再上完整固件试稳定性。
+`rx()` 收到的第一个 TCP 段可能短于 4 字节，`memcmp(buf, "POST", 4)` 就越界了。`on_rcv_nxt_update()` 保证 `[0..rx_bytes-1]` 已经连续到齐。
 
-**第 3 步：改触发方式。** 把默认环境里的 `check_buttons` 指向 httpd，按住 reset 上电就出网页：
+这个是**测试抓出来的**，用 `chunk=1`（每次只喂 1 字节）跑的时候暴露。
 
-```sh
-check_buttons=if button reset ; then led $bootled_status on ; httpd ; fi
+### 4. defenv 的 patch context 要从 fork 里取
+
+从 `openwrt/openwrt` 抄的 context 里 `bootfile*` 是 `openwrt-` 前缀，ImmortalWrt 是 `immortalwrt-` —— `Hunk #1 FAILED`，白等一个半小时。
+
+**改哪棵树就从哪棵树取 context。**
+
+### 5. 编译期宏的中文不要用 `\x` 转义
+
+页脚一度显示 `U-Boot ç½é¡µæç `。生成补丁的脚本里我用了 `'\xe7\xbd\x91'` 写「网」，Python 把它当成三个 Latin-1 字符，写文件时又编了一遍 UTF-8：
+
+```
+应该是:  e7 bd 91           网
+实际是:  c3 a7 c2 bd c2 91  ç½
 ```
 
-这一步要等第 2 步验证通过再做 —— 否则万一 httpd 有问题，就把唯一的免串口救砖入口给堵了。
+现在源码里直接写中文，并加了一条检查：不许出现 `c3 a7 c2` 这类双重编码序列。
+
+### 6. 验证判据本身也会错
+
+给 `999` 测试补丁写验证方法时，我说「看串口有没有打印 `*** TEST BUILD ***`」。它永远不会出现 —— `bootcmd` 只有经 bootmenu 第 0 项才会被执行，而那个补丁把 `bootmenu_delay` 设成了 `-1`，菜单根本不往下走。正确判据是「停在菜单上」。
+
+**一个编译要一个半小时，判据写错的代价和代码写错一样大。**
+
+---
+
+## 验证方式
+
+每次改动都跑三层，因为真机编译一次约 1.5 小时：
+
+1. **语法** —— 用一套桩头文件 `gcc -fsyntax-only -Wall -Wextra`
+2. **行为** —— 17 个用例，覆盖 multipart 解析（含 1 字节碎片、2 MB、payload 里混入 boundary 前缀）、多文件上传、刷写序列与对齐、内置兜底、DHCP、失败重试、自动重启
+3. **补丁** —— `patch -p1 --dry-run` 打到真实的 U-Boot 源码上，再比对应用结果与被测源码**逐字节一致**
+
+页面另外还有：HTML 标签配对检查、`node --check` 校验每一段内联 JS、以及把真实的 `up()` 函数拿到 node 里跑确认对话框的各种状态。
+
+刷之前从 fip 里解出 U-Boot 二进制核对一遍：
+
+```bash
+python3 - "$FIP" <<'EOF'
+import sys, lzma
+d = open(sys.argv[1], 'rb').read()
+off = 0x10
+while off + 40 <= len(d):
+    uuid = d[off:off+16]
+    o = int.from_bytes(d[off+16:off+24], 'little')
+    sz = int.from_bytes(d[off+24:off+32], 'little')
+    if uuid == b'\0' * 16:
+        break
+    blob = d[o:o+sz]
+    if blob[:1] == b'\x5d':                       # FIP 第二段是 LZMA 压的 U-Boot
+        open('uboot.bin', 'wb').write(
+            lzma.LZMADecompressor(lzma.FORMAT_ALONE).decompress(blob))
+    off += 40
+EOF
+strings -a uboot.bin | grep -E 'U-Boot 20'        # 版本串带源码 commit
+strings -a uboot.bin | grep -E '^(check_buttons|boot_ubi|httpd_)'
+```
+
+版本串里嵌着源码的 commit sha，可以确认刷的到底是哪一版。中文要按 UTF-8 字节搜（`grep -a`），`strings` 只认 ASCII。
+
+---
+
+## 还没做的
+
+* **刷写进度做不到。** 不是没做，是结构上不行：`net_loop()` 在写入开始前就返回，连接已关，页面轮询没人应答。要做就得把刷写拆进网络循环里分块跑 —— 那是把一条简单可靠的救砖路径换成一个状态机，对救砖场景不划算。
+* **推上游。** `206` 是实打实的 bug 修复，值得提给 immortalwrt；httpd 这套是否适合上游还没想好。

@@ -179,14 +179,16 @@ grep "^CONFIG_PACKAGE_luci-app-passwall=y" .config    # 同样要核对
 
 探测本身是我们补的（`206-airoha-an7581-probe-dram-size.patch`）—— 上游 U-Boot 只读 DTS 不探测，而它 fixup 时又会覆盖内核的 `memory` 节点，结果 1G 机器被摁回 512M。
 
-> ⚠️ **本地编译要多做一步**，workflow 是替你做了的：上游 dtsi 里 `linux,usable-memory-range` 写死 512M − 2M，不放开的话，U-Boot 探测出 1G 也会被内核 `memblock_cap_memory_range()` 裁回 512M。
+> **内存还有第二道闸门**：`linux,usable-memory-range`。U-Boot 探测出 1G，内核仍会按这个属性裁一刀。`master-XG-040G-MD` 线已经把它放到 `0x7fe00000`（2G，等于不裁剪），本地编译不用管。
+>
+> 但如果你是从**上游 immortalwrt** 直接编，那边还是 `0x1fe00000`（512M − 2M），得自己放开：
 >
 > ```bash
 > sed -i 's/<0x0 0x80200000 0x0 0x1fe00000>/<0x0 0x80200000 0x0 0x7fe00000>/' \
 >   target/linux/airoha/dts/an758x-nokia_xg-040g-common.dtsi
 > ```
 >
-> `2G` 只是「不裁剪」的意思 —— 该属性只能往少了裁，写大不会让系统去访问不存在的内存。
+> 写 `2G` 只是「不裁剪」的意思 —— 该属性只能往少了裁，写大不会让系统去访问不存在的内存。
 
 想反过来**故意把系统限制到更小**（做对照实验）时，改的也是这个属性：`0x1fe00000` = 512M、`0x3fe00000` = 1G。改 `memory` 节点没用，会被 fixup 覆盖。细节见 [设备变体 → 内存容量](variants.md#内存容量)。
 
