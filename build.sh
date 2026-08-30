@@ -29,7 +29,7 @@ DRAM_SIZE="auto"
 EXTRA_PACKAGES=""
 SRC_DIR=""
 JOBS=""
-DO_UPDATE=0
+DO_UPDATE=1        # 默认每次都拉最新源码；--no-update 可跳过
 DO_MENUCONFIG=0
 DO_CLEAN=0
 CONFIG_ONLY=0
@@ -75,8 +75,9 @@ usage() {
   -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除
   -j, --jobs <n>          并行度，默认按 CPU 与内存自动取较小值
   -o, --src-dir <路径>    源码树位置，默认 <本仓库同级>/openwrt-<分支>
-      --update            已存在的源码树执行 git pull 与 feeds update
-                          （默认不动，以免覆盖你本地的调试修改）
+      --no-update         跳过源码与 feeds 更新，编当前这份代码
+                          （默认每次都更新到远端最新；本地有调试
+                          修改、或要固定基线做对比时加这个）
       --menuconfig        defconfig 之后进入 menuconfig 手动调整
       --clean             编译前 make clean（保留工具链）
       --config-only       只做到配置生成，不编译
@@ -98,6 +99,7 @@ while [ $# -gt 0 ]; do
         -j|--jobs)      JOBS="${2:?缺少并行度}"; shift 2 ;;
         -o|--src-dir)   SRC_DIR="${2:?缺少路径}"; shift 2 ;;
         --update)       DO_UPDATE=1; shift ;;
+        --no-update|--not-update) DO_UPDATE=0; shift ;;
         --menuconfig)   DO_MENUCONFIG=1; shift ;;
         --clean)        DO_CLEAN=1; shift ;;
         --config-only)  CONFIG_ONLY=1; shift ;;
@@ -193,7 +195,7 @@ else
     CURRENT_BRANCH="$(git -C "$SRC_DIR" rev-parse --abbrev-ref HEAD)"
     if [ "$CURRENT_BRANCH" != "$BRANCH" ]; then
         if [ "$DO_UPDATE" = "1" ]; then
-            die "源码树在 $CURRENT_BRANCH，与 --branch $BRANCH 不符，不能自动更新。先自行切换分支"
+            die "源码树在 $CURRENT_BRANCH，与 --branch $BRANCH 不符，不能自动更新。先切换分支，或加 --no-update 编当前这份"
         fi
         warn "源码树当前在 $CURRENT_BRANCH，而不是 $BRANCH —— 编出来的是前者的代码"
     fi
@@ -205,7 +207,8 @@ else
         # 远端被强推后本地 HEAD 不再是远端的祖先，--ff-only 会直接失败。分两种情况处理：
         # 本地确实没有自己的东西就重置对齐；有则停下来交给你决定，绝不静默丢弃改动。
         if git -C "$SRC_DIR" merge-base --is-ancestor HEAD "origin/$BRANCH"; then
-            git -C "$SRC_DIR" merge --ff-only "origin/$BRANCH"
+            git -C "$SRC_DIR" merge --ff-only "origin/$BRANCH" \
+                || die "快进失败，工作区可能有与更新冲突的改动。处理后重跑，或加 --no-update 跳过更新"
         else
             warn "远端 $BRANCH 与本地已分叉，多半是跟进上游后强推过"
             DIRTY="$(git -C "$SRC_DIR" status --porcelain)"
@@ -225,7 +228,7 @@ else
                     echo "    工作区有未提交的修改:"
                     echo "$DIRTY" | sed 's/^/      /'
                 fi
-                die "本地有你自己的改动，不做自动重置。先 git -C $SRC_DIR branch <备份名> 或 stash，再重跑"
+                die "本地有你自己的改动，不做自动重置。先 git -C $SRC_DIR branch <备份名> 或 stash 再重跑，或加 --no-update 直接编当前这份"
             fi
             # 即便判定为可重置，也先留一个备份 ref —— reset --hard 之后旧 HEAD 只剩
             # reflog 可找，打个分支成本极低，误判时能立刻找回来。
@@ -236,7 +239,7 @@ else
             warn "基线已被重写，内核补丁或 DTS 若有变动，建议这次加 --clean 重编"
         fi
     else
-        info "源码树已存在，保持原样（要更新加 --update）"
+        info "源码树保持原样（--no-update）"
     fi
 fi
 
@@ -280,7 +283,7 @@ if [ "$DO_UPDATE" = "1" ] || [ ! -d package/feeds ]; then
     ./scripts/feeds update -a
     ./scripts/feeds install -a
 else
-    info "跳过 feeds 更新（要更新加 --update）"
+    info "跳过 feeds 更新（--no-update）"
 fi
 stage_done "准备"
 
@@ -383,6 +386,11 @@ find dl -size -1024c -delete 2>/dev/null || true   # 清掉下载失败的残缺
 stage_done "下载"
 
 info "开始编译（-j$JOBS，首次约 1~2 小时）"
+# 编译前把这次的输入摊开：日志翻回来时能一眼确认编的是哪份代码
+echo "    分支   $BRANCH"
+echo "    HEAD   $(git log -1 --date=short --format='%h %cd %s')"
+echo "    设备   $DEVICE_SYMBOL"
+echo "    配置   $CONFIG_FILE"
 if ! make -j"$JOBS"; then
     warn "并行编译失败，改用单线程重跑以定位问题（只重编失败的包，不会从头来）"
     make -j1 V=s
