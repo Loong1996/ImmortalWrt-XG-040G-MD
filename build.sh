@@ -117,6 +117,18 @@ for c in git make gcc python3 curl; do
     command -v "$c" >/dev/null || die "缺少 $c，请先执行 docs/local-build.md 第三章第 1 步安装依赖"
 done
 
+# OpenWrt 的 host pkg-config 文件写的是绝对路径。两棵树并排编译时，如果
+# shell 里残留 STAGING_DIR / PKG_CONFIG_PATH（或 staging_dir/host 是从
+# 另一棵树拷/链过来的），meson 会把那棵树的 libz.a 链进 apk，LTO 链接
+# 直接报 htole32 / le32toh undefined。这里先清掉会串树的环境变量。
+for v in STAGING_DIR STAGING_DIR_HOST STAGING_DIR_TOOLCHAIN PKG_CONFIG_PATH PKG_CONFIG_LIBDIR; do
+    eval "val=\${$v-}"
+    if [ -n "$val" ]; then
+        warn "环境变量 $v=$val 会串进 host 构建，已取消导出"
+        unset "$v"
+    fi
+done
+
 # ImmortalWrt 的 init_build_environment.sh 按发行版代号白名单判断，26.04 这类新版
 # 会被直接拒（Unsupported OS）。更实质的是新 GCC 会让 tools/ 下的 host 工具在
 # -Werror 上中断。这里只提醒不拦截 —— 依赖你若已自行处理妥当，仍可继续。
@@ -245,6 +257,17 @@ fi
 
 cd "$SRC_DIR"
 git --no-pager log -1 --date=short --format="    当前 HEAD: %h %cd %s"
+
+# 工具链若是从另一棵树拷过来的，zlib.pc 的 prefix 仍是那棵树的路径。
+# apk 的 meson 会按这个绝对路径去链 libz.a，编到 package/system/apk
+# [host] 就炸。查到就停下来，不要带着错前缀继续。
+if [ -f staging_dir/host/lib/pkgconfig/zlib.pc ]; then
+    ZPREFIX="$(sed -n 's/^prefix=//p' staging_dir/host/lib/pkgconfig/zlib.pc | head -n1)"
+    EXPECT_PREFIX="$SRC_DIR/staging_dir/host"
+    if [ -n "$ZPREFIX" ] && [ "$ZPREFIX" != "$EXPECT_PREFIX" ]; then
+        die "staging_dir/host 的 zlib.pc prefix 是 $ZPREFIX，不是本树 $EXPECT_PREFIX。多半是从另一棵树拷了工具链。在本树执行：make tools/zlib/{clean,compile,install} && make package/system/apk/host/clean"
+    fi
+fi
 
 # U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，ubi 引导
 # 还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb / 8211f2d7 移植到
