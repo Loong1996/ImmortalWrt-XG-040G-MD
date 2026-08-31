@@ -65,8 +65,8 @@
 > ```bash
 > git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
 > cd ImmortalWrt-XG-040G-MD
-> ./build.sh                          # master 线 + ubi 变体
-> ./build.sh -v tcboot -j 4           # 换变体、限制并行度
+> ./build.sh                          # master 线 + ubi 变体（推荐）
+> ./build.sh -v stock -j 4            # 换变体、限制并行度
 > ./build.sh -p "luci-app-passwall"   # 附加软件包，格式同选包页
 > ./build.sh -h                       # 全部参数
 > ```
@@ -139,9 +139,9 @@ python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
 
 | 源码分支 | 配置文件 | `device_variant` | 设备符号 |
 | --- | --- | --- | --- |
-| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `tcboot` | `nokia_xg-040g-md-tcboot` |
+| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `ubi`（默认，推荐） | `nokia_xg-040g-md-ubi` |
 | `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
-| `master-XG-040G-MD` | 同上 | `ubi`（默认） | `nokia_xg-040g-md-ubi` |
+| `master-XG-040G-MD` | 同上 | `tcboot`（刷机不再维护） | `nokia_xg-040g-md-tcboot` |
 | `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
 
 ```bash

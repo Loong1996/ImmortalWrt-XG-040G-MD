@@ -4,7 +4,7 @@
 
 | 分支 | 源码基线 | 设备定义 | 内核 | 配置文件 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-tcboot` | 6.18 | `config/xg-040g-md-master.config` | ✅ 已实机验证 |
+| `master-XG-040G-MD` | immortalwrt `master`，落后 0 | 上游原生 `nokia_xg-040g-md-ubi`（推荐）等 | 6.18 | `config/xg-040g-md-master.config` | ✅ 已实机验证 |
 | `openwrt-25.12-XG-040G-MD` | fzs209 的实测快照，**不跟进上游** | 自带 `bell_xg-040g-md` | 6.12 | `config/xg-040g-md.config` | ✅ 实测可用 |
 
 master 线只有一个提交叠在上游之上，跟进上游只需 rebase 一次。
@@ -22,7 +22,7 @@ master 线只有一个提交叠在上游之上，跟进上游只需 rebase 一�
 >
 > 那次 rebase 的状态归档在源码仓库的 `archive/openwrt-25.12-XG-040G-MD-upstream` 分支，供日后上游修好时参考。想要新内核与持续跟进上游，请用 master 线。
 
-**master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，外加一个 tcboot 引导变体。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
+**master 线**：上游 master 已内核 6.18 且原生支持本机型。闪存、cpufreq、pcs-airoha 等补丁全部由上游承担，本项目只保留 `luci-app-airoha-npu`、一行 `nf_conntrack_max`，以及作者魔改的 UBI U-Boot（网页救砖、DRAM 探测、复旦颗粒）。`tcboot` 变体还在，但刷机不再维护。6.12 时代的旧状态归档在源码仓库的 `archive/master-XG-040G-MD-6.12` 分支。
 
 ## 其它
 

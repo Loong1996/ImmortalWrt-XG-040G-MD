@@ -1,17 +1,21 @@
 # 设备变体（分区布局与刷机方式）
 
-实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一（`tcboot` / `stock` / `ubi`，默认 `ubi`），workflow 会自动改写 `.config` 的设备符号，25.12 分支则忽略该输入并给出 warning。
+实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一（`ubi` / `stock` / `tcboot`，默认 **`ubi`**），workflow 会自动改写 `.config` 的设备符号，25.12 分支则忽略该输入并给出 warning。
+
+新刷请用 **`ubi`（作者魔改 OpenWrt U-Boot，带网页救砖）**。同一套分区布局也能用上游官方 UBI U-Boot 引导，只是没有网页救砖。`tcboot` 刷机此后不再维护。
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |
-| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
+| **`ubi`（推荐）** | master | 作者魔改 OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
-| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
+| `tcboot`（不再维护） | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
 
-Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线只有一个设备，tag 不带变体段。
+Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-ubi-auto-20260831-45`；25.12 线只有一个设备，tag 不带变体段。
 
-## `tcboot` —— 第三方引导，空间最大
+## `tcboot` —— 第三方引导，此后不再维护刷机
+
+> ⛔ **此后不再维护 `tcboot` 刷机。** 变体仍能编出来，已在用的可以继续升；刷机方式、引导程序问题都不再跟。新机请用 [`ubi`](#ubi--作者魔改-openwrt-u-boot带网页救砖推荐)。
 
 ```
 0x00000000   512 KB   bootloader    ← 第三方 tcboot.bin
@@ -136,7 +140,7 @@ run bootcmd
 * 刷机用附件 `factory-kernel.bin` + `factory-rootfs.bin`
 * 代价：rootfs 空间只有 129 MB（其余三种是 255 MB）
 
-## `ubi` —— OpenWrt U-Boot，带救援镜像
+## `ubi` —— 作者魔改 OpenWrt U-Boot，带网页救砖（推荐）
 
 ```
 0x00000000   128 KB      bl2

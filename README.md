@@ -2,7 +2,9 @@
 
 ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
-🧰 [工具入口](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/)
+🧰 [工具入口](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/) · 选包 / 网页救砖
+
+支持三种引导：**作者魔改 UBI（推荐）**、官方 UBI、`tcboot.bin`（刷机不再维护）。
 
 > **⚠️ 请准备好 USB-TTL，做好随时救砖的准备。**
 
@@ -16,7 +18,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 | --- | --- |
 | [源码分支与跟进上游](docs/branches.md) | 两条编译线的差异、25.12 为什么固定在快照、rebase 流程 |
 | [本地编译](docs/local-build.md) | 不走 Actions，在自己的机器上编：机器要求、完整步骤、增量重编 |
-| [设备变体](docs/variants.md) | 三种分区布局、`tcboot.bin` 引导程序分析、能否互相升级 |
+| [设备变体](docs/variants.md) | 三种分区布局（推荐作者魔改 UBI）、引导差异、能否互相升级 |
 | [自定义软件包](docs/packages.md) | 内置了哪些包、选包页怎么用、刷完机还能不能补装 |
 | [LED 行为](docs/leds.md) | 面板灯与网口灯的语义、怎么改成自己想要的 |
 | [⚠️ 待解决：USB2 口带不动 USB3 U 盘](docs/usb2-port-issue.md) | 已排除的假设与依据、两条线的寄存器原始数据、下次从哪接手 |
@@ -44,18 +46,20 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ## 设备变体
 
-实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一，默认 `ubi`。
+实质是**三种分区布局**。25.12 线固定一种；master 线在 `Run workflow` 时用 **device_variant** 输入三选一，默认 **`ubi`（推荐）**。
 
 | 变体 | 分支 | 引导程序 | rootfs 空间 | MAC 来源 | 可回退原厂 |
 | --- | --- | --- | --- | --- | --- |
-| `tcboot` | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
+| **`ubi`（推荐）** | master | 作者魔改 OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | `stock` | master | **原厂，不动** | 129 MB | 原厂 `ri` 分区 | **是** |
-| `ubi` | master | OpenWrt U-Boot | **255.875 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
+| `tcboot`（不再维护） | master | 第三方 `tcboot.bin` | **255 MB** | ubi 的 `ri` 卷，缺失则随机 | 否 |
 | （`bell_xg-040g-md`） | 25.12 | 第三方 `tcboot.bin` | **255 MB** | 无，随机生成 | 否 |
 
-Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-tcboot-1G-20260826-42`；25.12 线只有一个设备，tag 不带变体段。
+Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-040G-MD-ubi-auto-20260831-45`；25.12 线只有一个设备，tag 不带变体段。
 
-> ⚠️ **`tcboot` 与 `ubi` 都会覆盖原厂引导和原厂分区表。** 其中 `ri`（MAC、序列号）与 `bosa`（光模块校准）是逐机唯一的出厂数据，没有公开来源，**刷这两种之前务必做整片 flash 备份**。
+> ⚠️ **`ubi` 与 `tcboot` 都会覆盖原厂引导和原厂分区表。** 其中 `ri`（MAC、序列号）与 `bosa`（光模块校准）是逐机唯一的出厂数据，没有公开来源，**刷这两种之前务必做整片 flash 备份**。
+>
+> ⛔ **`tcboot` 刷机此后不再维护。** 已在用的还能继续编、继续升，新刷请用 `ubi`。
 
 分区表、刷机方式、升级矩阵见[设备变体](docs/variants.md)。
 
@@ -70,6 +74,6 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
     ```
 * [获取超级密码](https://www.right.com.cn/FORUM/thread-8440823-1-1.html)
 * [拆机、刷机、配置、原厂分区备份 教程](https://www.right.com.cn/forum/thread-8467912-1-1.html)
-* 使用 [Nwrt](https://nwrt.kuroneko.host/flashdocs/XG-040G-MD.html) 提供的 [tcboot.bin](https://pan.baidu.com/s/1UWUXmZro0XFKmP-UHnbc1A?pwd=Nwrt#list/path=%2FNwrt%E5%9B%BA%E4%BB%B6%2F%E5%85%89%E7%8C%AB%E8%B4%9D%E5%B0%94) 作为引导程序。
+* 引导方式三种：**作者魔改 UBI**（推荐，自带[网页救砖](docs/uboot-http-recovery.md)）、上游官方 UBI（同一套分区布局，无网页救砖）、以及 [Nwrt](https://nwrt.kuroneko.host/flashdocs/XG-040G-MD.html) 的 [`tcboot.bin`](https://pan.baidu.com/s/1UWUXmZro0XFKmP-UHnbc1A?pwd=Nwrt#list/path=%2FNwrt%E5%9B%BA%E4%BB%B6%2F%E5%85%89%E7%8C%AB%E8%B4%9D%E5%B0%94)。另有 `stock` 变体保留原厂引导。**`tcboot` 刷机此后不再维护**，已在用的可以继续编本仓库固件，新机请走作者魔改 UBI。
 
 ![LuCI 概览](img/immortalwrt.png)

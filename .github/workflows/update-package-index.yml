@@ -21,14 +21,14 @@ on:
           - openwrt-25.12-XG-040G-MD
           - master-XG-040G-MD
       device_variant:
-        description: '设备变体（仅 master 分支有效）'
+        description: '设备变体（仅 master 有效；ubi 推荐，tcboot 刷机不再维护）'
         required: true
         default: 'ubi'
         type: choice
         options:
-          - tcboot
-          - stock
           - ubi
+          - stock
+          - tcboot
 
 env:
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
