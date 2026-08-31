@@ -1,18 +1,23 @@
-name: 更新选包页索引
+name: 更新门户网页
 
-# 生成选包页索引根本不需要编译。tmp/.packageinfo 是 include/scan.mk 在
-# make defconfig 阶段扫描全部 feeds 产生的，那时候一行代码都还没编。之所
-# 以以前要等两个多小时，纯粹是因为这一步被夹在完整构建流程里。
+# 改了 portal/ selector/ guide/ 想立刻上线：不勾「刷新选包索引」，
+# 只 checkout 本仓库再推 gh-pages，几十秒。
 #
-# 单拎出来跑十分钟就够：初始化环境 + 克隆源码 + feeds + defconfig。
-# 改了 selector/ 下的东西想看效果，或者 feeds 更新了想刷新清单，都用它。
-run-name: "更新选包页索引 · ${{ inputs.repo_branch }}"
+# 勾上才克隆源码 + feeds + defconfig 生成索引，约十分钟。
+# tmp/.packageinfo 是 include/scan.mk 在 make defconfig 阶段扫描全部
+# feeds 产生的，那时候一行代码都还没编。
+run-name: "更新门户网页${{ inputs.update_index && format(' · 索引 · {0}', inputs.repo_branch) || '' }}"
 
 on:
   workflow_dispatch:
     inputs:
+      update_index:
+        description: '同时刷新选包索引（要克隆源码，约十分钟；不勾则只推网页，几十秒）'
+        required: true
+        default: false
+        type: boolean
       repo_branch:
-        description: '给哪条线生成索引'
+        description: '给哪条线生成索引（仅刷新索引时有效）'
         required: true
         default: '两条线都生成'
         type: choice
@@ -21,7 +26,7 @@ on:
           - openwrt-25.12-XG-040G-MD
           - master-XG-040G-MD
       device_variant:
-        description: '设备变体（仅 master 有效；ubi 推荐，tcboot 刷机不再维护）'
+        description: '设备变体（仅刷新索引且 master 线有效；ubi 推荐，tcboot 刷机不再维护）'
         required: true
         default: 'ubi'
         type: choice
@@ -35,7 +40,27 @@ env:
   TZ: Asia/Shanghai
 
 jobs:
+  Pages:
+    if: ${{ !inputs.update_index }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout
+      uses: actions/checkout@main
+
+    - name: Publish To Pages(只推网页)
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        PAGES="$RUNNER_TEMP/pages"
+        mkdir -p "$PAGES"
+        bash "$GITHUB_WORKSPACE/scripts/publish-pages.sh" \
+          "$PAGES" \
+          "门户：同步网页（#${{ github.run_number }}）"
+
   Index:
+    if: ${{ inputs.update_index }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

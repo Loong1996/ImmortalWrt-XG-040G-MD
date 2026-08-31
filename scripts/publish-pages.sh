@@ -4,6 +4,9 @@
 # 用法：
 #   publish-pages.sh <json 目录> <提交说明>
 #
+# json 目录可以为空：里面没有 *.json 时只同步网页，gh-pages 上已有的
+# 索引原样留着。出固件和「刷新索引」会放进新 json；只改门户文案时不必。
+#
 # 需要环境变量：GH_TOKEN、GITHUB_REPOSITORY、GITHUB_WORKSPACE、RUNNER_TEMP
 #
 # index.html 是门户（选包 / 救砖教程 / 仓库三张卡片），选包工具本体在
@@ -22,7 +25,6 @@ need() { [ -e "$1" ] || { echo "::error::缺少 $1"; exit 1; }; }
 need "$GITHUB_WORKSPACE/portal/index.html"
 need "$GITHUB_WORKSPACE/selector/index.html"
 need "$GITHUB_WORKSPACE/guide/recovery-guide.html"
-need "$PAGES"
 
 GH="$RUNNER_TEMP/gh"
 REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
@@ -41,7 +43,15 @@ stage() {
   cp "$GITHUB_WORKSPACE/portal/index.html" "$GH/index.html"
   cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/packages.html"
   cp "$GITHUB_WORKSPACE/guide/recovery-guide.html" "$GH/recovery-guide.html"
-  cp "$PAGES"/*.json "$GH/"
+  # 没有新 json 就不动已有索引，只刷网页
+  shopt -s nullglob
+  jsons=( "$PAGES"/*.json )
+  shopt -u nullglob
+  if [ ${#jsons[@]} -gt 0 ]; then
+    cp "${jsons[@]}" "$GH/"
+  else
+    echo "本次不更新索引 json"
+  fi
   touch "$GH/.nojekyll"
   git add -A
 }

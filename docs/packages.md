@@ -120,13 +120,16 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 **选包页上显示的版本只能看，不能在这里指定**（事后 `apk add` 装的本体是另一回事，见上一段）。`.config` 里软件包只有开关位（`CONFIG_PACKAGE_xxx=y`），没有版本位，编出来是哪个版本取决于 `feeds update` 那一刻各 feed 仓库的 HEAD。要钉死某个包的版本，见下方[指定软件包版本](#指定软件包版本)。
 
-## 刷新索引（不用编译）
+## 刷新门户 / 索引（不用编译）
 
-生成索引其实不需要编译——`tmp/.packageinfo` 是 `make defconfig` 阶段扫描 feeds 产生的，那时一行代码都还没编。所以另有一个 `Actions → 更新选包页索引 → Run workflow`，**十分钟左右**跑完，默认一次刷新两条线。
+`Actions → 更新门户网页 → Run workflow`：
 
-改了 `selector/` 下的东西、或者 feeds 更新了想刷新清单，用它就行，不必为此跑一次完整构建。正常构建成功时也会顺带更新对应那条线的索引。
+* **默认不勾「同时刷新选包索引」** —— 只把 `portal/`、`selector/`、`guide/` 推到 Pages，**几十秒**
+* 勾上才生成索引 —— `tmp/.packageinfo` 是 `make defconfig` 阶段扫描 feeds 产生的，那时一行代码都还没编，**约十分钟**，默认一次刷两条线
 
-选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）。根路径是门户（三张卡片），选包工具在 [`packages.html`](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html)。页面在 [`portal/`](../portal/)、[`selector/`](../selector/)，发布脚本是 [`scripts/publish-pages.sh`](../scripts/publish-pages.sh)——出固件和刷新索引两条 workflow 共用，免得出固件时只覆盖选包页、把门户顶掉。两条编译线各有一份索引，页面左上角可切换。
+改了门户文案、选包页界面或救砖教程，不勾索引就行。feeds 更新了想刷新清单，再勾上。正常构建成功时也会顺带更新对应那条线的索引。
+
+选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）。根路径是门户（三张卡片），选包工具在 [`packages.html`](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html)。页面在 [`portal/`](../portal/)、[`selector/`](../selector/)，发布脚本是 [`scripts/publish-pages.sh`](../scripts/publish-pages.sh)——出固件和本 workflow 共用，json 可缺（只刷网页时不动已有索引）。两条编译线各有一份索引，页面左上角可切换。
 
 使用注意：
 
