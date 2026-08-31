@@ -52,7 +52,7 @@
 | [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt) | 源码树，编译在这里跑。**补丁已内置在分支中** | 编完约 30 GB |
 | 本仓库 | 只提供 `config/*.config` | clone 后 10 MB |
 
-本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`snapshots/` 与编译无关。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
+本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`img/` 与编译无关。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
 
 推荐 clone 本仓库而不是只拷一个 `.config`：配置会随项目更新，`git pull` 就能同步，只拷文件很容易编出一份和 CI 不一致的固件却不自知。
 

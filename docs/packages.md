@@ -126,7 +126,7 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 改了 `selector/` 下的东西、或者 feeds 更新了想刷新清单，用它就行，不必为此跑一次完整构建。正常构建成功时也会顺带更新对应那条线的索引。
 
-选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）；页面与索引生成脚本在 [`selector/`](../selector/)。两条编译线各有一份索引，页面左上角可切换。
+选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）。根路径是门户（三张卡片），选包工具在 [`packages.html`](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html)。页面在 [`portal/`](../portal/)、[`selector/`](../selector/)，发布脚本是 [`scripts/publish-pages.sh`](../scripts/publish-pages.sh)——出固件和刷新索引两条 workflow 共用，免得出固件时只覆盖选包页、把门户顶掉。两条编译线各有一份索引，页面左上角可切换。
 
 使用注意：
 

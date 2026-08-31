@@ -23,7 +23,7 @@ on:
       device_variant:
         description: '设备变体（仅 master 分支有效）'
         required: true
-        default: 'tcboot'
+        default: 'ubi'
         type: choice
         options:
           - tcboot
@@ -127,51 +127,6 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        PAGES="$RUNNER_TEMP/pages"
-        GH="$RUNNER_TEMP/gh"
-        REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-        if git clone --depth 1 --branch gh-pages "$REMOTE" "$GH"; then
-          echo "已有 gh-pages 分支"
-        else
-          echo "gh-pages 不存在，新建"
-          git init -b gh-pages "$GH"
-          git -C "$GH" remote add origin "$REMOTE"
-        fi
-        cd "$GH"
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-        # 只覆盖本次产出的文件，另一条线的索引原样留着。
-        # index.html 是门户（选包/救砖教程/仓库三张卡片），选包工具本体搬到 packages.html。
-        stage() {
-          cp "$GITHUB_WORKSPACE/portal/index.html" "$GH/index.html"
-          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/packages.html"
-          cp "$GITHUB_WORKSPACE/guide/recovery-guide.html" "$GH/recovery-guide.html"
-          cp "$PAGES"/*.json "$GH/"
-          touch "$GH/.nojekyll"
-          git add -A
-        }
-
-        # 两条线同时跑时后推的那个会被拒。浅克隆上 rebase 不可靠，
-        # 改为丢掉本地提交、取回最新的 gh-pages，再把本次文件重新叠上去。
-        for try in 1 2 3; do
-          stage
-          if git diff --cached --quiet; then
-            echo "选包页无变化，跳过提交"
-            exit 0
-          fi
-          git commit -m "选包页：更新 ${{ matrix.branch }} 索引（$INDEX_TAG）"
-          if git push origin gh-pages; then
-            break
-          fi
-          if [ "$try" = 3 ]; then
-            echo "::error::推送 gh-pages 连续三次失败"
-            exit 1
-          fi
-          echo "推送被拒，多半是另一条线先提交了，取最新重来"
-          git fetch --depth 1 origin gh-pages
-          git reset --hard FETCH_HEAD
-        done
-        OWNER=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f1 | tr 'A-Z' 'a-z')
-        NAME=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)
-        echo "选包页已更新：https://$OWNER.github.io/$NAME/"
+        bash "$GITHUB_WORKSPACE/scripts/publish-pages.sh" \
+          "$RUNNER_TEMP/pages" \
+          "选包页：更新 ${{ matrix.branch }} 索引（$INDEX_TAG）"

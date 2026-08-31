@@ -682,7 +682,7 @@ jobs:
           - 引擎得单独勾：passwall 的引擎靠它自己的 `INCLUDE_*` 子选项带，那不是包名，选包页列不出来
           - `kmod-nft-tproxy` 与 `kmod-tun` 已保留，所以加回代理时不必为内核模块重来一次
 
-    - name: Publish Package Selector(发布选包页)
+    - name: Publish Pages Site(发布门户与选包页)
       if: steps.compile.outputs.status == 'success'
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -710,49 +710,8 @@ jobs:
           "$PAGES/packages-$REPO_BRANCH.json" \
           "$EXTRA_ADD"
 
-        # gh-pages 是只放选包页的孤儿分支，首次运行时现建。
-        # 每条编译线各自更新自己那份 json，互不覆盖。
-        GH="$RUNNER_TEMP/gh"
-        REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
-        if git clone --depth 1 --branch gh-pages "$REMOTE" "$GH"; then
-          echo "已有 gh-pages 分支"
-        else
-          echo "gh-pages 不存在，新建"
-          git init -b gh-pages "$GH"
-          git -C "$GH" remote add origin "$REMOTE"
-        fi
-        cd "$GH"
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-        # 只覆盖本次产出的文件，另一条编译线的索引原样留着
-        stage() {
-          cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/index.html"
-          cp "$PAGES"/*.json "$GH/"
-          touch "$GH/.nojekyll"
-          git add -A
-        }
-
-        # 两条线同时构建时后推的那个会被拒。浅克隆上 rebase 不可靠，
-        # 改为丢掉本地提交、取回最新的 gh-pages，再把本次文件重新叠上去。
-        for try in 1 2 3; do
-          stage
-          if git diff --cached --quiet; then
-            echo "选包页无变化，跳过提交"
-            exit 0
-          fi
-          git commit -m "选包页：更新 $REPO_BRANCH 索引（$RELEASE_TAG）"
-          if git push origin gh-pages; then
-            break
-          fi
-          if [ "$try" = 3 ]; then
-            echo "::error::推送 gh-pages 连续三次失败"
-            exit 1
-          fi
-          echo "推送被拒，多半是并发构建先提交了，取最新重来"
-          git fetch --depth 1 origin gh-pages
-          git reset --hard FETCH_HEAD
-        done
-        OWNER=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f1 | tr 'A-Z' 'a-z')
-        NAME=$(echo "$GITHUB_REPOSITORY" | cut -d/ -f2)
-        echo "选包页已更新：https://$OWNER.github.io/$NAME/"
+        # 门户 / 选包页 / 救砖教程一起发布。不要只拷 selector/index.html
+        # 到根路径 —— 那会把三卡片门户顶掉，只剩选包工具。
+        bash "$GITHUB_WORKSPACE/scripts/publish-pages.sh" \
+          "$PAGES" \
+          "选包页：更新 $REPO_BRANCH 索引（$RELEASE_TAG）"
