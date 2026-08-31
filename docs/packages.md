@@ -25,7 +25,7 @@
 
 引擎要单独选——`luci-app-passwall` 的引擎是靠它自己的 `INCLUDE_*` 子选项带的，那些不是包名，选包页列不出来，所以得把 `xray-core`、`sing-box` 一起勾上。
 
-`kmod-nft-tproxy` 与 `kmod-tun` **特意保留**（两个加起来不到 30 KB）。内核模块事后补不了，删了的话"去选包页加回代理"这条路就断了——页面上会直接标成红色的「缺 N 内核模块」。
+代理相关的内核模块**特意保留**（整组约 40 KB）：`kmod-nft-tproxy`、`kmod-nft-socket`、`kmod-nf-socket`、`kmod-tun`、`kmod-inet-diag`、`kmod-netlink-diag`。内核模块事后补不了，缺了的话 Passwall / sing-box / homeproxy 无法刷完机再装——选包页会标成红色的「缺 N 内核模块」。`luci-app-homeproxy` 与 `sing-box` 在官方 feed 里，刷完机 `apk add` 即可；`luci-app-passwall` 不在官方源，仍需自备 ipk 或加第三方源。
 
 每个 Release 都会附带一份 `custom-packages.txt`，列出该次编译实际勾选的自定义软件包（按配置文件分组，带注释）；固件实际安装的完整包列表见同一 Release 中的 `*.manifest`。
 
