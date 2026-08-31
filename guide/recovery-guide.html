@@ -216,6 +216,24 @@ kbd{font-family:var(--mono); font-size:.85em; color:var(--text); background:var(
 .shot-cap{font-family:var(--mono); font-size:.72rem; color:var(--dim2); text-align:center; margin-top:.5rem}
 .shot-row{display:grid; grid-template-columns:1fr 1fr; gap:1rem}
 @media (max-width:640px){.shot-row{grid-template-columns:1fr}}
+
+.dl{margin:.85rem 0 0; background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  box-shadow:var(--shadow); overflow:hidden}
+.dl-head{padding:.8rem 1.05rem; border-bottom:1px solid var(--line-soft);
+  display:flex; justify-content:space-between; gap:.8rem; flex-wrap:wrap; align-items:baseline}
+.dl-head .rel{font-family:var(--mono); font-size:.82rem; font-weight:600}
+.dl-head .tag{font-family:var(--mono); font-size:.72rem; color:var(--accent); text-decoration:none}
+.dl a.row{display:flex; gap:.75rem; align-items:flex-start; padding:.7rem 1.05rem;
+  text-decoration:none; color:inherit; border-bottom:1px solid var(--line-soft)}
+.dl a.row:last-child{border-bottom:0}
+.dl a.row:hover{background:var(--sunk)}
+.dl .role{font-family:var(--mono); font-size:.7rem; font-weight:600; color:var(--accent);
+  background:var(--accent-soft); border-radius:99px; padding:.15rem .55rem; white-space:nowrap; margin-top:.15rem}
+.dl .name{font-family:var(--mono); font-size:.76rem; word-break:break-all; flex:1; min-width:0}
+.dl .hint{display:block; color:var(--dim2); font-size:.7rem; margin-top:.15rem; font-family:var(--sans)}
+.dl .sz{font-family:var(--mono); font-size:.72rem; color:var(--dim2); white-space:nowrap; margin-top:.15rem}
+.dl .err{padding:1rem 1.05rem; color:var(--dim); font-size:.9rem}
+nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-bottom:.6rem}
 </style>
 
 </head>
@@ -223,6 +241,7 @@ kbd{font-family:var(--mono); font-size:.85em; color:var(--text); background:var(
 <div class="page">
 
 <nav class="rail" aria-label="目录">
+  <a class="back" href="./">← 回门户</a>
   <span class="tag">开始</span>
   <a href="#decide">先判断你在哪一步</a>
   <a href="#prep">准备工作</a>
@@ -277,7 +296,9 @@ kbd{font-family:var(--mono); font-size:.85em; color:var(--text); background:var(
     <p class="sec-sub" id="howto-check">如果系统还能正常进 OpenWrt 后台，SSH 上去执行 <code>cat /proc/mtd</code>：看到 <code>bl2</code> 和 <code>ubi</code> 这两个分区名，说明已经是这个 U-Boot 了，直接看「日常使用」；看到 <code>bootloader</code> / <code>ubootenv</code>，或者 <code>nsb_1</code> / <code>data</code>，说明还没换过，走「首次迁移」。系统进不去就直接按「首次迁移」的步骤操作，安全。</p>
 
     <ul class="check">
-      <li><span class="box"></span><div><b>下载三个固件文件</b><div class="sub">去 <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/releases" target="_blank" rel="noopener">Releases 页面</a>，选标题里带 <code>ubi</code> 的那次发布，下载三个文件：<code>…-ubi-preloader.bin</code>、<code>…-ubi-bl31-uboot.fip</code>、<code>…-ubi-squashfs-sysupgrade.itb</code>。文件名不用改，网页会按名字做核对。</div></div></li>
+      <li><span class="box"></span><div><b>下载最新 <code>ubi-auto</code> 固件</b><div class="sub">下面是 Releases 里最近一次自适应内存 <code>ubi</code> 构建的 <code>immortalwrt-</code> 文件，点文件名直接下。文件名不用改，网页会按名字做核对。</div>
+        <div class="dl" id="ubi-dl"><div class="err">正在读取最新 Release…</div></div>
+      </div></li>
       <li><span class="box"></span><div><b>网线一根 + 一台电脑或手机</b><div class="sub">全程只用来连这台路由器，不需要能上外网。</div></div></li>
       <li><span class="box"></span><div><b>USB 转 TTL 串口模块<span class="only">仅首次迁移</span></b><div class="sub">3.3V 电平的那种（不是 RS232），淘宝搜「USB TTL CH340」一类都行，带 3 根杜邦线。之后日常用网页就不再需要它了。</div></div></li>
       <li><span class="box"></span><div><b>支持 Xmodem 发送的串口终端软件<span class="only">仅首次迁移</span></b><div class="sub">Windows 上 MobaXterm、SecureCRT、Xshell 都自带「发送文件 → Xmodem」；macOS / Linux 可以用 <code>minicom</code>，或者装 <code>lrzsz</code> 后在 <code>screen</code> 里用 <code>sx</code> 命令发送。串口参数固定 <code>115200 8N1</code>。</div></div></li>
@@ -533,6 +554,7 @@ kbd{font-family:var(--mono); font-size:.85em; color:var(--text); background:var(
   </section>
 
   <footer class="credit">
+    <div><a href="./">← 回门户</a></div>
     <div>本教程对应恢复页 <b>Web 0.1.0</b>，只覆盖 <code>master-XG-040G-MD</code> 分支的 <code>ubi</code> 变体。</div>
     <div>项目与恢复页作者：<a href="https://github.com/Loong1996" target="_blank" rel="noopener">Loong</a></div>
   </footer>
@@ -541,6 +563,59 @@ kbd{font-family:var(--mono); font-size:.85em; color:var(--text); background:var(
 </div>
 
 <script>
+(function(){
+  var box = document.getElementById("ubi-dl");
+  if (!box) return;
+  var API = "https://api.github.com/repos/Loong1996/ImmortalWrt-XG-040G-MD/releases?per_page=30";
+  function fmt(n){
+    if (n >= 1048576) return (n / 1048576).toFixed(1) + " MiB";
+    if (n >= 1024) return (n / 1024).toFixed(0) + " KiB";
+    return n + " B";
+  }
+  function role(name){
+    if (/-preloader\.bin$/.test(name)) return {k:"BL2", h:"首次迁移 · xmodem 第 1 个"};
+    if (/-bl31-uboot\.fip$/.test(name)) return {k:"U-Boot", h:"首次迁移 · xmodem 第 2 个"};
+    if (/squashfs-sysupgrade\.itb$/.test(name)) return {k:"固件", h:"网页「固件」那一格"};
+    if (/initramfs-recovery\.itb$/.test(name)) return {k:"救援镜像", h:"可选"};
+    return {k:"文件", h:""};
+  }
+  function rank(name){
+    if (/-preloader\.bin$/.test(name)) return 1;
+    if (/-bl31-uboot\.fip$/.test(name)) return 2;
+    if (/squashfs-sysupgrade/.test(name)) return 3;
+    if (/initramfs-recovery/.test(name)) return 4;
+    return 9;
+  }
+  fetch(API, {headers:{"Accept":"application/vnd.github+json"}})
+    .then(function(r){ if (!r.ok) throw new Error(String(r.status)); return r.json(); })
+    .then(function(list){
+      var rel = null;
+      for (var i = 0; i < list.length; i++) {
+        if (/ubi-auto/i.test(list[i].tag_name || "")) { rel = list[i]; break; }
+      }
+      if (!rel) throw new Error("no ubi-auto");
+      var files = (rel.assets || []).filter(function(a){
+        return /^immortalwrt-/.test(a.name) && !/\.manifest$/.test(a.name);
+      }).sort(function(a, b){ return rank(a.name) - rank(b.name); });
+      if (!files.length) throw new Error("no files");
+      var html = '<div class="dl-head"><span class="rel">' + rel.name + '</span>'
+        + '<a class="tag" href="' + rel.html_url + '" target="_blank" rel="noopener">打开 Release →</a></div>';
+      files.forEach(function(a){
+        var r = role(a.name);
+        html += '<a class="row" href="' + a.browser_download_url + '">'
+          + '<span class="role">' + r.k + '</span>'
+          + '<span class="name">' + a.name
+          + (r.h ? '<span class="hint">' + r.h + '</span>' : '') + '</span>'
+          + '<span class="sz">' + fmt(a.size) + '</span></a>';
+      });
+      box.innerHTML = html;
+    })
+    .catch(function(){
+      box.innerHTML = '<div class="err">没拉到文件列表，请到 '
+        + '<a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/releases" target="_blank" rel="noopener">Releases</a> '
+        + '选标题带 <code>ubi-auto</code> 的那次，下载 <code>immortalwrt-</code> 开头的文件。</div>';
+    });
+})();
 (function(){
   var CSS = "*{box-sizing:border-box}body{margin:0;padding:1.5rem 1.1rem;background:var(--bg);color:var(--fg);font:14.5px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif}:root{--bg:#f4f6f8;--fg:#1b1f24;--card:#fff;--line:#dde3ea;--ac:#2563eb;--mut:#6b7280;--wbg:#fff8e1;--wln:#e5b567}h1{font-size:1.2rem;margin:0 0 .12rem}.sub{color:var(--mut);font-size:.82rem;margin:0 0 1.1rem}.c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem 1.05rem;margin-bottom:.9rem}.f{display:block;margin-bottom:1rem}.f:last-child{margin-bottom:0}.n{font-weight:600;font-size:.92rem}.h{color:var(--mut);font-size:.76rem;font-family:ui-monospace,Menlo,monospace}input[type=file]{display:block;width:100%;margin-top:.4rem;font-size:.8rem;color:var(--mut)}summary{cursor:pointer;font-weight:600;color:var(--mut);font-size:.88rem}details[open] summary{margin-bottom:.9rem;color:var(--fg)}b{white-space:nowrap}.warn{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.65rem .8rem;font-size:.8rem;margin-top:.5rem}button{width:100%;padding:.75rem;font:inherit;font-weight:600;font-size:.92rem;color:#fff;background:var(--ac);border:0;border-radius:9px;cursor:pointer}.pw{height:11px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:.8rem;box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}.pb{height:100%;border-radius:99px;background:var(--ac);background-image:linear-gradient(45deg,rgba(255,255,255,.22) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.22) 50%,rgba(255,255,255,.22) 75%,transparent 75%,transparent);background-size:1rem 1rem}.ps{text-align:center;margin:.5rem 0 0;color:var(--mut);font-size:.8rem;font-variant-numeric:tabular-nums}.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:1rem;z-index:9}.mask[data-on]{display:flex}.dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.05rem 1.15rem;max-width:22rem;width:100%;box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}.dlg h2{margin:0 0 .5rem;font-size:.96rem}.list{font-size:.82rem;border-top:1px solid var(--line);padding-top:.5rem}.wr{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.55rem .7rem;font-size:.8rem;margin-top:.55rem}.btns{display:flex;gap:.55rem;margin-top:1rem}.btns button{flex:1}.no{background:transparent;color:var(--mut);border:1px solid var(--line)}.danger{background:#b45309}.sr{display:flex;justify-content:space-between;gap:1rem;padding:.18rem 0}.sr .k{color:var(--mut)}.sr .v{font-variant-numeric:tabular-nums}.bad{color:#a35a00}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.2rem}.top .sub{margin-bottom:0}.tb{width:auto;flex:none;padding:.2rem .55rem;font-size:.95rem;background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:99px}.ver{font-size:.6rem;font-weight:600;color:var(--ac);border:1px solid;border-radius:99px;padding:.06rem .45rem;vertical-align:.15em;white-space:nowrap}table{width:100%;border-collapse:collapse;font-size:.82rem}td{padding:.28rem 0;vertical-align:top}td:first-child{width:5rem;color:var(--mut);white-space:nowrap}footer{text-align:center;color:var(--mut);font-size:.76rem;margin-top:1.4rem;line-height:1.5}footer .v{font-family:ui-monospace,Menlo,monospace;font-size:.7rem;word-break:break-all}a{color:var(--ac);text-decoration:none}";
 
