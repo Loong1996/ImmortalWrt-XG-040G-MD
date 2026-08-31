@@ -3,7 +3,14 @@
 
 全量编译不读 make FILES=（那是 ImageBuilder 的接口，还会和 kmod 的 FILES
 变量撞名）。这里直接改 immortalwrt 源码树里的模板：banner 仍走 %D %V %C
-替换，LuCI 仍拼接发行版 + LuCI 版本，只在末尾多一段固定文字。
+替换。
+
+LuCI 概览的「固件版本」来自 ubus system.board 的 release.description，
+也就是 /etc/openwrt_release 的 DISTRIB_DESCRIPTION。base-files 打包时
+从 package/base-files/files/ 现拷现替换，和 SSH banner 同一条路。
+
+不要改 luci-mod-status 的 10_system.js：那份源码会在编包时 minify 进
+build_dir，工具链缓存命中后不会重编，补丁进不了固件。
 
 幂等：已含仓库 URL 则跳过。feeds 更新 / git reset 之后再跑一次即可。
 """
@@ -14,10 +21,8 @@ from pathlib import Path
 
 # LuCI 固件版本本来就用 / 分隔，追加时带斜杠；SSH banner 是新起一行，不要斜杠。
 BANNER_LINE = " Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
-LUCI_SUFFIX = " / Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
+RELEASE_SUFFIX = " / Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
 MARKER = "github.com/Loong1996/ImmortalWrt-XG-040G-MD"
-LUCI_OLD = "(luciversion || '')"
-LUCI_NEW = "(luciversion || '') + '%s'" % LUCI_SUFFIX
 
 
 def die(msg: str) -> None:
@@ -49,46 +54,44 @@ def append_banner(root: Path) -> None:
     print("    已写入 SSH banner: %s" % path)
 
 
-# 编译产物里的 10_system.js 会被 minify 成一行，格式和源码不同。
-# 只改 feeds 源码；build_dir / staging_dir 里那份编 luci-mod-status 时会重新生成。
-_SKIP_DIR = {"build_dir", "staging_dir", "staging_dir_host", "tmp", "bin", "dl"}
+def append_quoted_field(path: Path, key: str, label: str) -> None:
+    """在 KEY='value' / KEY="value" 的收尾引号前追加 RELEASE_SUFFIX。"""
+    if not path.is_file():
+        die("未找到 %s" % path)
+    lines = path.read_text(encoding="utf-8").splitlines()
+    hits = [i for i, ln in enumerate(lines) if ln.startswith(key + "=")]
+    if len(hits) != 1:
+        die("%s 里 %s 出现 %d 次，期望 1 次" % (path, key, len(hits)))
+    i = hits[0]
+    line = lines[i]
+    if MARKER in line:
+        print("    %s 已含作者信息，跳过: %s" % (label, path))
+        return
+    prefix_sq = key + "='"
+    prefix_dq = key + '="'
+    if line.startswith(prefix_sq) and line.endswith("'") and len(line) > len(prefix_sq):
+        lines[i] = line[:-1] + RELEASE_SUFFIX + "'"
+    elif line.startswith(prefix_dq) and line.endswith('"') and len(line) > len(prefix_dq):
+        lines[i] = line[:-1] + RELEASE_SUFFIX + '"'
+    else:
+        die("%s 的 %s 行格式已变，拒绝盲改:\n%s" % (path, key, line))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print("    已追加 %s: %s" % (label, path))
 
 
-def patch_luci(root: Path) -> None:
-    found: list[Path] = []
-    seen: set[Path] = set()
-    for p in root.glob("**/luci-mod-status/**/view/status/include/10_system.js"):
-        rel = p.relative_to(root)
-        if any(part in _SKIP_DIR for part in rel.parts):
-            continue
-        real = p.resolve()
-        if real in seen:
-            continue
-        seen.add(real)
-        found.append(p)
-    if not found:
-        die("未找到 luci-mod-status 的 10_system.js，请先 ./scripts/feeds install -a")
-
-    patched = skipped = 0
-    for path in found:
-        text = path.read_text(encoding="utf-8")
-        if MARKER in text:
-            print("    LuCI 10_system.js 已含作者信息，跳过: %s" % path)
-            skipped += 1
-            continue
-        lines = text.splitlines(keepends=True)
-        hits = [i for i, ln in enumerate(lines) if "Firmware Version" in ln]
-        if len(hits) != 1:
-            die("%s 里 Firmware Version 出现 %d 次，期望 1 次" % (path, len(hits)))
-        i = hits[0]
-        if LUCI_OLD not in lines[i]:
-            die("%s 的固件版本行格式已变，拒绝盲改:\n%s" % (path, lines[i].rstrip()))
-        lines[i] = lines[i].replace(LUCI_OLD, LUCI_NEW, 1)
-        path.write_text("".join(lines), encoding="utf-8")
-        print("    已追加 LuCI 固件版本: %s" % path)
-        patched += 1
-    if patched == 0 and skipped == 0:
-        die("没有可改的 10_system.js")
+def patch_release(root: Path) -> None:
+    files = root / "package/base-files/files"
+    append_quoted_field(
+        files / "etc/openwrt_release",
+        "DISTRIB_DESCRIPTION",
+        "openwrt_release DISTRIB_DESCRIPTION",
+    )
+    os_release = files / "usr/lib/os-release"
+    append_quoted_field(
+        os_release,
+        "OPENWRT_RELEASE",
+        "os-release OPENWRT_RELEASE",
+    )
 
 
 def main() -> None:
@@ -97,7 +100,7 @@ def main() -> None:
         die("%s 不像 OpenWrt 源码树（缺 rules.mk）" % root)
     print("写入作者信息 → %s" % root)
     append_banner(root)
-    patch_luci(root)
+    patch_release(root)
 
 
 if __name__ == "__main__":

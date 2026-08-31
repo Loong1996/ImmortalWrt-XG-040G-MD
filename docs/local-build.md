@@ -129,7 +129,7 @@ cp ../ImmortalWrt-XG-040G-MD/patch/uboot-airoha/*.patch package/boot/uboot-airoh
 ./scripts/feeds update -a
 ./scripts/feeds install -a
 
-# 在默认 SSH banner 和 LuCI 固件版本后面追加作者信息（build.sh / CI 会自动跑）
+# 在默认 SSH banner 和 /etc/openwrt_release（LuCI 固件版本）后面追加作者信息（build.sh / CI 会自动跑）
 python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
 ```
 
