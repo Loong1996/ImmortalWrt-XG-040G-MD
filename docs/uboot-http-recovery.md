@@ -111,6 +111,7 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fi
 | `950-configs-xg-040g-md-enable-httpd` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
 | `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
 | `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项、`envver` 自动刷新、`ethaddr` 两道闸 |
+| `953-xg-040g-md-httpd-stock-restore` | 救砖页刷回原厂：整片 `all_flash.bin` 或单个原厂分区 |
 
 `206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
 
@@ -212,6 +213,31 @@ envver  bootmenu_title  bootmenu_1..bootmenu_9  show_about
 > 顺带解释了菜单第 5 项 `boot_tftp_write_fip` 为什么刷完要 `run reset_factory`：清空 env 卷不是「导入旧默认值」，是让新 U-Boot 启动时发现 env 无效、回落到自己的默认环境。那条路是对的，代价是 `ethaddr` 跟着一起没。
 
 改菜单时记得 `envver` 加一，否则老机器不会刷新。钩子放在共用的 an7581 board 文件里是安全的：别的板子默认环境里没有 `envver`，`env_get_default_into()` 返回负值就直接 return。`saveenv` 是尽力而为 —— 首次迁移会在 `_init_env` 建出 env 卷之前走到这里，而它本来就跑在默认环境上，不需要这次写入。
+
+### `953`：刷回原厂
+
+回原厂原本是这个页面唯一去不了的方向 —— 要么用 tcboot 自带的 web 界面（迁走之后它就没了），要么串口加 TFTP 服务器，而后者正是这个页面存在的意义所在。
+
+**为什么一个只有 `bl2` + `ubi` 布局的 U-Boot 能刷回原厂布局：** 分区表不在 flash 上，它来自设备树，跟着引导程序和内核一起走。把原厂字节写回原厂偏移，原厂的分区表也就跟着回来了。`mtd write` 对裸设备按字节偏移写，从不过问分区叫什么。
+
+必须用裸设备 `spi-nand0` 也是同一个原因：`bl2` 到 `0x20000` 结束、`ubi` 从那里开始，**谁都够不到从偏移 0 起的整片写入**。
+
+两种模式：
+
+| 模式 | 用途 | 写前校验 |
+| --- | --- | --- |
+| 整片 `all_flash.bin` | 真正退回原厂 | 长度必须正好 `0xeba0000`（235.625 MiB） |
+| 单个原厂分区 | 更常用、更安全 | 长度必须等于该分区大小 |
+
+**长度先校验再擦**，免得擦完才发现文件不对 —— 那时候机器上已经没有能引导的东西了。
+
+单分区那条是给 `ri` 准备的：勾过「先重建 UBI」的机器靠写回 `ri` 找回出厂 MAC，否则唯一的副本就只剩机身标签。
+
+> **`kernel_slave` / `rootfs_slave` 故意不提供。** 它们的大小是注册时镜像的长度（`0x3af742` / `0x1cb0000`），不是 128 KiB 擦除块的整数倍，没法单独擦。`nsb_slave` 覆盖这两个，是能用的最小单位。`nsb_master` 不列是另一个原因 —— 它不是分区，是 `kernel`+`rootfs` 的第二个视图，写它等于把那两块写两遍。
+
+**`UPLOAD_MAX` 改成了按 DRAM 实算。** 上传落在 `$loadaddr` 就地刷写，所以能放多大取决于它上面还剩多少内存：512M 的机器放下 235.6 MiB 后余量约 20 MiB。原来固定的 96 MiB 会直接拒收原厂镜像，而单纯把常数调大又会让更大的文件写出内存边界。
+
+两条路不会同处一次会话 —— 表单拒绝把退回原厂和任何 UBI 侧字段一起提交，`httpd_flash()` 也是各自 `return`，不会落进 `bl2`/`fip`/`fit` 那串流程。
 
 ### `ri` 卷空了会读出一个广播 MAC
 
