@@ -146,20 +146,32 @@ httpd_format_ubi=ubi detach ; mtd erase ubi && ubi part ubi
 菜单原来看不出这是哪来的固件 —— 和一份原厂 UBI 引导长得一模一样，进到菜单里的人也没有路径找回项目。
 
 ```
-bootmenu_title=  ... ( ( ( OpenWrt-Web 0.1.0 ) ) )    ← 加了网页 U-Boot 版本号
+bootmenu_title=  ... ( ( ( OpenWrt-Web 0.1.1 ) ) )    ← 加了网页 U-Boot 版本号
 bootmenu_8=\e[31mStart web recovery server (http://192.168.1.1)\e[0m=httpd ; run bootmenu_confirm_return
 bootmenu_9=About - github.com/Loong1996/ImmortalWrt-XG-040G-MD=run show_about ; run bootmenu_confirm_return
-show_about=echo ; echo Web recovery U-Boot by Loong ; echo Project: ... ; echo Author: ... ; echo
+show_about=echo ; echo Web recovery U-Boot by Loong ; echo Guide: ... ; echo Project: ... ; echo Author: ... ; echo
 ```
 
-外加 `httpd_start_server()` 开头多打一行版本与仓库地址，给看串口、不看网页的人。
+`httpd_start_server()` 开头也照着打一遍，给看串口、不看网页的人：
+
+```
+Web recovery 0.1.1 by Loong
+Guide   https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html
+Project https://github.com/Loong1996/ImmortalWrt-XG-040G-MD
+Using airoha-gdm1 device, MAC xx:xx:xx:xx:xx:xx
+Listening for HTTP on 192.168.1.1 port 80
+Handing out DHCP leases from 192.168.1.1
+Press Ctrl-C to abort
+```
+
+**那行 MAC 是排障用的，不是装饰。** `net_check_prereq()` 只对 `BOOTP` / `DHCP` / `LINKLOCAL` 那一支校验 MAC，`HTTPD` 走的是 `FASTBOOT_*` / `TFTPSRV` 那一支，只检查 IP。所以出厂 MAC 丢了、`CONFIG_NET_RANDOM_ETHADDR` 顶上随机 MAC 的板子，一样会打印 `Listening for HTTP`，一样什么都不回 —— 浏览器还在按 ARP 缓存里的旧 MAC 发包。**「服务起来了但页面打不开」，先看这一行。**
 
 几处需要知道的：
 
 - **屏幕上显示 9 和 10，env 里是 `bootmenu_8` / `bootmenu_9`。** `cmd/bootmenu.c` 的快捷键是 `'1' + index`，下标 0 那项画成「1.」。
 - **第 10 项画出来是「a.」不是「10.」。** 快捷键只有一个字符：1–9 之后接 a–z，0 留给 Exit。所以仓库地址写在标题里而不是藏在按键后面 —— 不按也要能看见，按下去才补上作者页。
 - **第 9 项是红的**，和写引导器的那两项同色：它是刷机入口，且一旦进去，机器就离开菜单直到被中断。
-- **版本号写了两遍**：`bootmenu_title` 里一份，`net/httpd.c` 的 `WEB_VERSION` 一份。env 是纯文本，看不见 C 宏。两处都在 `952` 这一个补丁里，改的时候一起改。
+- **版本号写了两遍**：`bootmenu_title` 里一份（`952`），`net/httpd.c` 的 `WEB_VERSION` 一份（`202`）。env 是纯文本，看不见 C 宏。改版本要同时动这两个补丁 —— 网页上那个 `Web 0.1.1` 徽章用的就是后者。
 
 > **老机器升级引导器后看不到新菜单，这是正常的。**
 >
