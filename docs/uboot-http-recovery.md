@@ -110,7 +110,7 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fi
 | `202-net-add-httpd-recovery-server` | 全部的 httpd —— 新增 `net/httpd.c`，外加 `net.c` / `Kconfig` / `Makefile` / `net-legacy.h` 四处挂接 |
 | `950-configs-xg-040g-md-enable-httpd` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
 | `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
-| `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项 |
+| `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项、`envver` 自动刷新、`ethaddr` 两道闸 |
 
 `206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
 
@@ -173,11 +173,11 @@ Press Ctrl-C to abort
 - **第 9 项是红的**，和写引导器的那两项同色：它是刷机入口，且一旦进去，机器就离开菜单直到被中断。
 - **版本号写了两遍**：`bootmenu_title` 里一份（`952`），`net/httpd.c` 的 `WEB_VERSION` 一份（`202`）。env 是纯文本，看不见 C 宏。改版本要同时动这两个补丁 —— 网页上那个 `Web 0.1.1` 徽章用的就是后者。
 
-> **老机器升级引导器后看不到新菜单，这是正常的。**
+> **老机器升级引导器后看不到新菜单 —— `envver` 之后会自动处理。**
 >
 > `CONFIG_ENV_IS_IN_UBI`：`ubootenv` 卷里存的是**完整一份**环境，加载时整个盖掉编译进固件的默认值。已经初始化过 env 的机器换了新 FIP，菜单还是旧的 —— 新加的 `bootmenu_8` / `bootmenu_9` 根本不在它的环境里。
 >
-> 要让新默认值生效，菜单选 `0. Exit` 进命令行，跑：
+> `952` 加了自动刷新（见下一节 [`envver`](#envver-新-u-boot-自己刷新落后的菜单)），**从 `envver=1` 这版固件开始**升级引导器就不用手动做什么了。手动的办法留着备用：菜单选 `0. Exit` 进命令行，跑：
 >
 > ```
 > env default -a -k
@@ -190,6 +190,28 @@ Press Ctrl-C to abort
 > 只想动某几个变量就点名：`env default -f bootmenu_title bootmenu_8 bootmenu_9`。
 >
 > 首次迁移过来的机器走 `_firstboot`，直接就是新的，不用管这一段。
+
+### `envver`：新 U-Boot 自己刷新落后的菜单
+
+默认环境里带一个 `envver`，`board/airoha/an7581/an7581_rfb.c` 里挂一个 `EVT_POST_PREBOOT` 钩子：saved env 的 `envver` 落后于编译进去的默认值，就把描述菜单的那几个变量重新导入一遍，然后 `saveenv`。
+
+时机在 `preboot` 跑完之后、`bootdelay_process()` 和 `autoboot_command()` 画菜单之前 —— env 已加载，菜单还没画。
+
+重新导入的**只有**这些：
+
+```
+envver  bootmenu_title  bootmenu_1..bootmenu_9  show_about
+```
+
+运行时状态刻意不在列表里：`bootdelay` / `bootmenu_delay`（`_switch_to_menu` 把 0 抬到 3，重置会让菜单闪现即超时）、`bootmenu_0`（初始化后被换成 `bootmenu_0d` 的内容）、还有 `ethaddr` —— 它压根不在默认环境里，`env_set_default_vars()` 的 import 碰不到它。**这就是它比 `env default -a -k` 温和的地方**，后者会把 59 个变量全推平。
+
+> **为什么放在启动时，而不是刷 FIP 的时候**
+>
+> `env default` 导入的是**当前正在运行的**那个 U-Boot 编译进去的 `default_environment`。刷 FIP 时顺手刷新，装进 env 卷的是**旧版**的默认值 —— 菜单会永远落后固件一版。刚写进 flash 的新 FIP 还没运行，它的默认环境此刻根本不在内存里。**只有新 U-Boot 自己能做对这件事。**
+>
+> 顺带解释了菜单第 5 项 `boot_tftp_write_fip` 为什么刷完要 `run reset_factory`：清空 env 卷不是「导入旧默认值」，是让新 U-Boot 启动时发现 env 无效、回落到自己的默认环境。那条路是对的，代价是 `ethaddr` 跟着一起没。
+
+改菜单时记得 `envver` 加一，否则老机器不会刷新。钩子放在共用的 an7581 board 文件里是安全的：别的板子默认环境里没有 `envver`，`env_get_default_into()` 返回负值就直接 return。`saveenv` 是尽力而为 —— 首次迁移会在 `_init_env` 建出 env 卷之前走到这里，而它本来就跑在默认环境上，不需要这次写入。
 
 ### `ri` 卷空了会读出一个广播 MAC
 
