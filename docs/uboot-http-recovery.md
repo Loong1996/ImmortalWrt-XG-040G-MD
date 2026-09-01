@@ -110,6 +110,7 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fi
 | `202-net-add-httpd-recovery-server` | 全部的 httpd —— 新增 `net/httpd.c`，外加 `net.c` / `Kconfig` / `Makefile` / `net-legacy.h` 四处挂接 |
 | `950-configs-xg-040g-md-enable-httpd` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
 | `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
+| `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项 |
 
 `206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
 
@@ -138,7 +139,33 @@ httpd_format_ubi=ubi detach ; mtd erase ubi && ubi part ubi
 
 `httpd_format_ubi` 是去掉 `reset` 的 `ubi_format`，好让同一次会话接着写卷。
 
-**TFTP 一条没删**：bootmenu 的第 1、3、5、6 项照旧，`boot_tftp*` 全套变量都在。自动路径走浏览器，手动路径留 TFTP。
+**TFTP 一条没删**：bootmenu 的第 2、4、5、6 项照旧，`boot_tftp*` 全套变量都在。自动路径走浏览器，手动路径留 TFTP。
+
+### `952` 改了什么
+
+菜单原来看不出这是哪来的固件 —— 和一份原厂 UBI 引导长得一模一样，进到菜单里的人也没有路径找回项目。
+
+```
+bootmenu_title=  ... ( ( ( OpenWrt-Web 0.1.0 ) ) )    ← 加了网页 U-Boot 版本号
+bootmenu_8=\e[31mStart web recovery server (http://192.168.1.1)\e[0m=httpd ; run bootmenu_confirm_return
+bootmenu_9=About - github.com/Loong1996/ImmortalWrt-XG-040G-MD=run show_about ; run bootmenu_confirm_return
+show_about=echo ; echo Web recovery U-Boot by Loong ; echo Project: ... ; echo Author: ... ; echo
+```
+
+外加 `httpd_start_server()` 开头多打一行版本与仓库地址，给看串口、不看网页的人。
+
+几处需要知道的：
+
+- **屏幕上显示 9 和 10，env 里是 `bootmenu_8` / `bootmenu_9`。** `cmd/bootmenu.c` 的快捷键是 `'1' + index`，下标 0 那项画成「1.」。
+- **第 10 项画出来是「a.」不是「10.」。** 快捷键只有一个字符：1–9 之后接 a–z，0 留给 Exit。所以仓库地址写在标题里而不是藏在按键后面 —— 不按也要能看见，按下去才补上作者页。
+- **第 9 项是红的**，和写引导器的那两项同色：它是刷机入口，且一旦进去，机器就离开菜单直到被中断。
+- **版本号写了两遍**：`bootmenu_title` 里一份，`net/httpd.c` 的 `WEB_VERSION` 一份。env 是纯文本，看不见 C 宏。两处都在 `952` 这一个补丁里，改的时候一起改。
+
+> **老机器升级引导器后看不到新菜单，这是正常的。**
+>
+> `CONFIG_ENV_IS_IN_UBI`：`ubootenv` 卷里存的是**完整一份**环境，加载时整个盖掉编译进固件的默认值。已经初始化过 env 的机器换了新 FIP，菜单还是旧的 —— 新加的 `bootmenu_8` / `bootmenu_9` 根本不在它的环境里。
+>
+> 要让新默认值生效，二选一：菜单里跑一次**第 8 项** `Reset all settings to factory defaults`，或者网页刷机时勾上**先重建 UBI**（后者连出厂 MAC 一起擦，只在首次迁移时才该勾）。首次迁移过来的机器走 `_firstboot`，直接就是新的。
 
 ---
 
