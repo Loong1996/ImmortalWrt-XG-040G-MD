@@ -264,11 +264,16 @@ tcboot 的 U-Boot 里可用的传输手段：
 
 ### 路线 A：Web 界面（最省事）
 
-按住 reset 上电 → 浏览器打开 `http://192.168.1.1` → 进 `spinand` 页面 → 上传 `all_flash.bin` → 等自动重启。
+哪个页面取决于机器现在跑的是什么引导器 —— 两个都是按住 reset 上电、浏览器开 `http://192.168.1.1`，内部也都是 `mtd erase spi-nand0` + `mtd write spi-nand0 <addr> 0x0 <len>`：
 
-内部自动完成 `mtd erase spi-nand0` + `mtd write spi-nand0 <addr> 0x0 <len>`。
+| 当前引导器 | 页面 | 怎么做 |
+| --- | --- | --- |
+| `tcboot` | 它自带的 `spinand` 页 | 上传 `all_flash.bin` → 等自动重启 |
+| `ubi` | [网页救砖](uboot-http-recovery.md)（`953` 起） | 展开**退回原厂** → 整片恢复选 `all_flash.bin` → 确认 |
 
-> ⚠️ 235 MiB 要**先整个收进 DRAM**（`loadaddr=0x81800000`）。512M 颗粒等于 U-Boot 加 235 MiB 挤在 512 MiB 里，偏紧；换过 1G/2G 的机器宽裕得多。
+`ubi` 那条还能**只恢复一个分区**：下拉选分区名、传对应的那个文件即可，不必刷满 235 MiB。`ri`（256 KiB）是最常用的一个 —— 勾过「先重建 UBI」把出厂 MAC 擦掉之后，写回它就能找回来。
+
+> ⚠️ 235 MiB 要**先整个收进 DRAM**。512M 颗粒等于 U-Boot 加 235 MiB 挤在 512 MiB 里，偏紧；换过 1G/2G 的机器宽裕得多。网页救砖会按实际 DRAM 算上限，放不下会当场拒绝而不是写飞。
 
 ### 路线 B：U-Boot 命令行 + TFTP（可控性最好）
 
