@@ -364,9 +364,8 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
       <div class="step">
         <div class="rule"><div class="num">3</div><div class="line"></div></div>
         <div class="body">
-          <h3>按住 reset，插电源</h3>
-          <p><b>手指按住机身的 reset 键不要松开</b>，同时插上电源适配器。终端软件里很快会滚出一串启动日志，留意其中一闪而过的 <code>Press x</code> —— 看到就立刻按键盘上的 <kbd>x</kbd>。</p>
-          <div class="callout warn"><b>reset 键全程按住，从插电到后面传完两个文件为止都不要松手。</b>这一步决定了 U-Boot 起来后会不会直接进恢复页，松早了要重新插拔电源再来一次。</div>
+          <h3>长按机身 reset 键并同时上电</h3>
+          <p><b>长按机身 reset 键并同时上电</b>，不要松开。终端软件里很快会滚出一串启动日志，留意其中一闪而过的 <code>Press x</code> —— 看到就立刻按键盘上的 <kbd>x</kbd>。</p>
         </div>
       </div>
 
@@ -470,12 +469,11 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <!-- ================= PART B ================= -->
   <section id="enter">
     <div class="sec-head"><span class="sec-num">B</span><h2>日常使用 · 进恢复页</h2></div>
-    <p class="sec-sub">迁移完成之后，这个恢复页就一直带在这台路由器的 U-Boot 里，两种情况都不需要串口。</p>
+    <p class="sec-sub">迁移完成之后，这个恢复页就一直带在这台路由器的 U-Boot 里，不用串口。</p>
 
     <table class="info">
       <tr><th>什么时候</th><th>怎么进</th></tr>
-      <tr><td><b>系统正常，想主动刷机 / 升级引导器</b></td><td>长按机身 reset 键并同时上电，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）</td></tr>
-      <tr><td><b>系统起不来了</b></td><td>什么都不用做 —— 从 NAND 引导失败后 U-Boot 会自己循环打开网页，插上网线就能连</td></tr>
+      <tr><td><b>想主动刷机 / 升级引导器</b></td><td>先上电，等 1~2 秒<b>后再</b>按住机身 reset 键，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）</td></tr>
     </table>
     <p class="muted">流水灯亮起来就是进去了，跟首次迁移那一步看到的是同一种灯效。</p>
   </section>
