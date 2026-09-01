@@ -213,7 +213,13 @@ envver  bootmenu_title  bootmenu_1..bootmenu_9  show_about
 >
 > 顺带解释了菜单第 5 项 `boot_tftp_write_fip` 为什么刷完要 `run reset_factory`：清空 env 卷不是「导入旧默认值」，是让新 U-Boot 启动时发现 env 无效、回落到自己的默认环境。那条路是对的，代价是 `ethaddr` 跟着一起没。
 
-改菜单时记得 `envver` 加一，否则老机器不会刷新。钩子放在共用的 an7581 board 文件里是安全的：别的板子默认环境里没有 `envver`，`env_get_default_into()` 返回负值就直接 return。`saveenv` 是尽力而为 —— 首次迁移会在 `_init_env` 建出 env 卷之前走到这里，而它本来就跑在默认环境上，不需要这次写入。
+改菜单时记得 `envver` 加一，否则老机器不会刷新。
+
+> **刷新之后要自己把 `$ver` 补回标题。**
+>
+> 追加版本号的 `_bootmenu_update_title` 第一件事就是 `setenv _bootmenu_update_title` 把自己清空 —— 它只为「环境首次初始化」而存在。所以钩子重新导入 `bootmenu_title` 之后，saved env 里已经没有任何人能把版本号加回去，菜单会一直显示没有版本的标题。这是从 0.1.0 网页直接升上来的机器踩到的：菜单项全对，标题却光秃秃。
+>
+> 现在由钩子自己补。两条路不会重复追加：**环境被重建**时跑的是那个 env 脚本，而那种情况下 `envver` 恰好匹配、钩子不触发；**固件升级**时钩子触发，而脚本早已自删除。钩子放在共用的 an7581 board 文件里是安全的：别的板子默认环境里没有 `envver`，`env_get_default_into()` 返回负值就直接 return。`saveenv` 是尽力而为 —— 首次迁移会在 `_init_env` 建出 env 卷之前走到这里，而它本来就跑在默认环境上，不需要这次写入。
 
 ### `953`：刷回原厂
 
