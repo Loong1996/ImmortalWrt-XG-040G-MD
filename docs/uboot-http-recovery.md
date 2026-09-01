@@ -177,7 +177,40 @@ Press Ctrl-C to abort
 >
 > `CONFIG_ENV_IS_IN_UBI`：`ubootenv` 卷里存的是**完整一份**环境，加载时整个盖掉编译进固件的默认值。已经初始化过 env 的机器换了新 FIP，菜单还是旧的 —— 新加的 `bootmenu_8` / `bootmenu_9` 根本不在它的环境里。
 >
-> 要让新默认值生效，二选一：菜单里跑一次**第 8 项** `Reset all settings to factory defaults`，或者网页刷机时勾上**先重建 UBI**（后者连出厂 MAC 一起擦，只在首次迁移时才该勾）。首次迁移过来的机器走 `_firstboot`，直接就是新的。
+> 要让新默认值生效，菜单选 `0. Exit` 进命令行，跑：
+>
+> ```
+> env default -a -k
+> saveenv
+> reset
+> ```
+>
+> `-k` 是 `H_NOCLEAR`：**不清空现有环境**，只把默认环境覆盖上去。默认环境里没有 `ethaddr` 这一行，所以 MAC 留得住 —— 这正是它比第 8 项 `Reset all settings to factory defaults` 好的地方，后者把 `ubootenv` 卷整个清零，`ethaddr` 跟着一起没。`env default` 也能把 saved env 里**根本不存在**的变量补进来（`env_set_default_vars()` 直接从 `default_environment` 导入），所以新增的 `bootmenu_8` / `bootmenu_9` 是能这样加进去的。
+>
+> 只想动某几个变量就点名：`env default -f bootmenu_title bootmenu_8 bootmenu_9`。
+>
+> 首次迁移过来的机器走 `_firstboot`，直接就是新的，不用管这一段。
+
+### `ri` 卷空了会读出一个广播 MAC
+
+`ethaddr_factory` 从 `ri` 卷偏移 `0x3e` 读 6 字节当出厂 MAC。**勾过「先重建 UBI」的机器，`ri` 是 `ubi_create_board_data` 重新建的空卷**，读到的是擦除态 —— `ff:ff:ff:ff:ff:ff`。
+
+它会被一路用下去，因为 `net/eth-uclass.c` 判断环境里的 MAC 时只调 `is_zero_ethaddr()`，不调 `is_valid_ethaddr()`：
+
+```c
+if (!is_zero_ethaddr(env_enetaddr)) {
+        memcpy(pdata->enetaddr, env_enetaddr, ARP_HLEN);   /* 全 FF 从这里进来 */
+} else if (is_valid_ethaddr(pdata->enetaddr)) {
+} else if (... !is_valid_ethaddr(...)) {
+        net_random_ethaddr(...);      /* 全 FF 走不到，所以没有随机 MAC 警告 */
+}
+```
+
+于是广播地址被当成**源地址**发出去。症状很有迷惑性：DHCP 那行照常成功（DHCP 本来就是广播），单播回包被对端网卡丢掉，**网页打不开而串口一切正常**。
+
+`952` 给它加了两道闸：读到擦除态就把 `ethaddr` 清掉，落到 U-Boot 自己的随机 MAC 分支（会打印 `using random MAC address` 警告）；`ethaddr` 已经有值就不去读 `ri`，手工 `setenv ethaddr` 设进去的 MAC 不会被后来的「Initialize environment.」覆盖。
+
+出厂 MAC 一旦随 `ri` 卷擦掉就找不回来了，机身标签是唯一的真值来源。
 
 ---
 
