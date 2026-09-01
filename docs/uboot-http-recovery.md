@@ -267,7 +267,16 @@ if (!is_zero_ethaddr(env_enetaddr)) {
 
 于是广播地址被当成**源地址**发出去。症状很有迷惑性：DHCP 那行照常成功（DHCP 本来就是广播），单播回包被对端网卡丢掉，**网页打不开而串口一切正常**。
 
-`952` 给它加了两道闸：读到擦除态就把 `ethaddr` 清掉，落到 U-Boot 自己的随机 MAC 分支（会打印 `using random MAC address` 警告）；`ethaddr` 已经有值就不去读 `ri`，手工 `setenv ethaddr` 设进去的 MAC 不会被后来的「Initialize environment.」覆盖。
+`952` 从两头堵：
+
+- **`ethaddr_factory` 改成按读到的值判断** —— 读进临时变量 `_mac`，拿到可用的值才赋给 `ethaddr`；读到擦除态就什么都不动。
+- **C 侧在 `EVT_SETTINGS_R` 兜底** —— saved env 里已经存着全 FF 的机器，`ethaddr_factory` 早就自删除了、这辈子不会再跑，只能在这里丢掉它，让 U-Boot 自己的随机 MAC 分支接手（会打印 `using random MAC address`）。
+
+> **为什么不能用「`ethaddr` 已有值就不读 `ri`」这种写法**（我先写错过一版）
+>
+> `_firstboot` 是从 bootmenu 里跑的，**远在 `initr_net()` 之后**。一块没有 MAC 的板子到那时早就被 `eth-uclass` 生成了随机地址，并且由 `eth_env_set_enetaddr_by_index()` **写进了 env**。于是这个判断必然成立，`ri` 里的真地址在 `reset_factory` 之后**永远读不回来**。
+>
+> 按值判断则两件事一起做到了：`ri` 有真值就盖掉生成的随机地址，`ri` 是擦除态就不动 —— 后者同时保护了手工 `setenv` 进去的 MAC。
 
 出厂 MAC 一旦随 `ri` 卷擦掉就找不回来了，机身标签是唯一的真值来源。
 
