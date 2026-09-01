@@ -344,7 +344,6 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
               <div class="node"><div class="l1">路由器<br>调试口</div></div>
             </div>
           </div>
-          <div class="callout danger"><b>不要接 3.3V / VCC 那根线。</b>路由器用自己的电源适配器供电，USB-TTL 模块只负责收发数据；两路供电接在一起容易把哪一边烧坏。</div>
         </div>
       </div>
 
@@ -390,8 +389,8 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
       <div class="step">
         <div class="rule"><div class="num">5</div><div class="line"></div></div>
         <div class="body">
-          <h3>看到流水灯，松开 reset</h3>
-          <p>第二个文件传完，U-Boot 已经在内存里跑起来了，面板五个灯会开始<b>依次流水点亮</b>。看到流水灯就可以松手了 —— 串口和终端软件此时也完成了任务，接下来的操作全部在浏览器里进行。</p>
+          <h3>看到流水灯，松开 reset，再插网线</h3>
+          <p>第二个文件传完，U-Boot 已经在内存里跑起来了，面板五个灯会开始<b>依次流水点亮</b>。看到流水灯就可以松手了。<b>进流水灯效果后再插入网线</b> —— 串口和终端软件此时也完成了任务，接下来的操作全部在浏览器里进行。</p>
           <div class="led-grid">
             <div class="led-card">
               <div class="led-row led-chase"><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span><span class="led"></span></div>
@@ -412,7 +411,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
         <div class="rule"><div class="num">6</div><div class="line"></div></div>
         <div class="body">
           <h3>网线插好，浏览器打开 192.168.1.1</h3>
-          <p>网线插到路由器任意一个网口（通常是 LAN1），电脑或手机的网络设置成<b>自动获取 IP</b> 即可，会分到 <code>192.168.1.100</code>。不用手动配 IP —— U-Boot 里带了个迷你 DHCP 服务器，就是为了省掉这一步。</p>
+          <p><b>进流水灯效果后再插入网线</b>，插到路由器任意一个网口（通常是 LAN1）。电脑或手机的网络设置成<b>自动获取 IP</b> 即可，会分到 <code>192.168.1.100</code>。不用手动配 IP —— U-Boot 里带了个迷你 DHCP 服务器，就是为了省掉这一步。</p>
           <div class="diagram">
             <div class="pipe">
               <div class="node"><div class="l1">电脑 / 手机</div><div class="l2">192.168.1.100</div></div>
@@ -473,9 +472,9 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
 
     <table class="info">
       <tr><th>什么时候</th><th>怎么进</th></tr>
-      <tr><td><b>想主动刷机 / 升级引导器</b></td><td>先上电，等 1~2 秒<b>后再</b>按住机身 reset 键，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）</td></tr>
+      <tr><td><b>想主动刷机 / 升级引导器</b></td><td>先上电，等 1~2 秒<b>后再</b>按住机身 reset 键，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）。<b>进流水灯效果后再插入网线</b></td></tr>
     </table>
-    <p class="muted">流水灯亮起来就是进去了，跟首次迁移那一步看到的是同一种灯效。</p>
+    <p class="muted">流水灯亮起来就是进去了，跟首次迁移那一步看到的是同一种灯效。这时再插网线，浏览器打开 192.168.1.1。</p>
   </section>
 
   <section id="web-use">
