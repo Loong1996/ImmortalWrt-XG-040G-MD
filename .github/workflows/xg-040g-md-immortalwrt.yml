@@ -253,6 +253,14 @@ jobs:
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
         # 25.12 线只有一个设备，FLAVOR 为空则不插入该段
         echo "RELEASE_TAG=XG-040G-MD${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
+        # 实验分支仍发 Release 方便下载，但标成 pre-release，避免盖掉
+        # GitHub Latest；救砖指南也只认 master-XG-040G-MD 的 ubi-auto。
+        case "$REPO_BRANCH" in
+          master-XG-040G-MD|openwrt-25.12-XG-040G-MD)
+            echo "IS_PRERELEASE=false" >> $GITHUB_ENV ;;
+          *)
+            echo "IS_PRERELEASE=true" >> $GITHUB_ENV ;;
+        esac
         # 自适应：只放开 usable 上限，memory 留给 U-Boot 探测后 fixup 进 DTB
         if [ "$DRAM_SIZE" = "auto" ]; then
           echo "DRAM_LABEL=自适应" >> $GITHUB_ENV
@@ -647,6 +655,7 @@ jobs:
         name: ${{ env.RELEASE_TAG }}
         tag: ${{ env.RELEASE_TAG }}
         token: ${{ secrets.GITHUB_TOKEN }}
+        prerelease: ${{ env.IS_PRERELEASE == 'true' }}
         artifacts: ${{ env.FIRMWARE_PATH }}/*
         body: |
           **This is OpenWrt Firmware for XG-040G-MD（内存 ${{ env.DRAM_LABEL }} · ${{ env.VARIANT_LABEL }} 变体）**

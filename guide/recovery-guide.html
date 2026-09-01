@@ -297,7 +297,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
 
     <div class="dl-block" id="files">
       <h2 class="dl-title">下载最新 ubi-auto 固件</h2>
-      <p class="dl-sub">Releases 里最近一次自适应内存 <code>ubi</code> 构建的 <code>immortalwrt-</code> 文件，点文件名直接下。文件名不用改，网页会按名字做核对。</p>
+      <p class="dl-sub">只列出 <code>master-XG-040G-MD</code> 分支最近一次自适应内存 <code>ubi</code> 构建。其它实验分支不会出现在这里。点文件名直接下，文件名不用改，网页会按名字做核对。</p>
       <div class="dl" id="ubi-dl"><div class="err">正在读取最新 Release…</div></div>
     </div>
   </header>
@@ -574,7 +574,14 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
 (function(){
   var box = document.getElementById("ubi-dl");
   if (!box) return;
-  var API = "https://api.github.com/repos/Loong1996/ImmortalWrt-XG-040G-MD/releases?per_page=30";
+  var API = "https://api.github.com/repos/Loong1996/ImmortalWrt-XG-040G-MD/releases?per_page=100";
+  function isMasterUbiAuto(rel){
+    if (!rel || rel.draft || rel.prerelease) return false;
+    if (!/ubi-auto/i.test(rel.tag_name || "")) return false;
+    // tag 不带分支名。正文是「目标分支：master-XG-040G-MD」，
+    // 必须整段匹配，否则会误收 master-XG-040G-MD-httpd 这类开发分支。
+    return /目标分支：master-XG-040G-MD\s*(?:\r?\n|$)/.test(rel.body || "");
+  }
   function fmt(n){
     if (n >= 1048576) return (n / 1048576).toFixed(1) + " MiB";
     if (n >= 1024) return (n / 1024).toFixed(0) + " KiB";
@@ -599,9 +606,9 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
     .then(function(list){
       var rel = null;
       for (var i = 0; i < list.length; i++) {
-        if (/ubi-auto/i.test(list[i].tag_name || "")) { rel = list[i]; break; }
+        if (isMasterUbiAuto(list[i])) { rel = list[i]; break; }
       }
-      if (!rel) throw new Error("no ubi-auto");
+      if (!rel) throw new Error("no master ubi-auto");
       var files = (rel.assets || []).filter(function(a){
         return /^immortalwrt-/.test(a.name) && !/\.manifest$/.test(a.name);
       }).sort(function(a, b){ return rank(a.name) - rank(b.name); });
@@ -621,7 +628,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
     .catch(function(){
       box.innerHTML = '<div class="err">没拉到文件列表，请到 '
         + '<a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/releases" target="_blank" rel="noopener">Releases</a> '
-        + '选标题带 <code>ubi-auto</code> 的那次，下载 <code>immortalwrt-</code> 开头的文件。</div>';
+        + '选正文写着目标分支 <code>master-XG-040G-MD</code>、标题带 <code>ubi-auto</code> 的那次，下载 <code>immortalwrt-</code> 开头的文件。</div>';
     });
 })();
 (function(){
