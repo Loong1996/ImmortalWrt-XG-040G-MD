@@ -25,6 +25,7 @@ need() { [ -e "$1" ] || { echo "::error::缺少 $1"; exit 1; }; }
 need "$GITHUB_WORKSPACE/portal/index.html"
 need "$GITHUB_WORKSPACE/selector/index.html"
 need "$GITHUB_WORKSPACE/guide/recovery-guide.html"
+need "$GITHUB_WORKSPACE/guide/recovery-guide_0_1_0.html"
 
 GH="$RUNNER_TEMP/gh"
 REMOTE="https://x-access-token:$GH_TOKEN@github.com/$GITHUB_REPOSITORY.git"
@@ -43,6 +44,9 @@ stage() {
   cp "$GITHUB_WORKSPACE/portal/index.html" "$GH/index.html"
   cp "$GITHUB_WORKSPACE/selector/index.html" "$GH/packages.html"
   cp "$GITHUB_WORKSPACE/guide/recovery-guide.html" "$GH/recovery-guide.html"
+  # 旧版存档：恢复页 0.1.1 之前的教程，固件固定在 ubi-auto-20260831-47，
+  # 由新版教程里的「旧版」卡片链过去。文件名进 URL，改名会断链。
+  cp "$GITHUB_WORKSPACE/guide/recovery-guide_0_1_0.html" "$GH/recovery-guide_0_1_0.html"
   # 没有新 json 就不动已有索引，只刷网页
   shopt -s nullglob
   jsons=( "$PAGES"/*.json )
