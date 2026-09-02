@@ -344,7 +344,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
     <a class="verlink" href="./recovery-guide_0_1_0.html">
       <span class="k">旧版</span>
       <span class="t">你的机器还是 Web 0.1.0？</span>
-      <span class="d">恢复页右上角写着 <b>Web 0.1.0</b>、或者引导菜单标题是 <code>( ( ( OpenWrt ) ) )</code> 的，看存档版教程 —— 那一版没有「退回原厂」，菜单也只到第 8 项。<b>照本页升到 0.1.1 之后，回到本页即可。</b></span>
+      <span class="d">恢复页右上角写着 <b>Web 0.1.0</b>、或者引导菜单标题是 <code>( ( ( OpenWrt ) ) )</code> 的，看存档版教程 —— 那一版没有「退回原厂」，菜单也只到第 8 项。<b>不着急升</b> —— 0.1.1 刚放出来，可能还有没暴露的问题，机器现在能用就过几天再说；真要升，照本页升完回到本页即可。</span>
       <span class="go">打开 0.1.0 存档教程 →</span>
     </a>
 
@@ -379,6 +379,8 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <section id="whatsnew">
     <div class="sec-head"><span class="sec-num">△</span><h2>0.1.1 比 0.1.0 多了什么</h2></div>
     <p class="sec-sub">从 0.1.0 升上来，用现在这个 0.1.0 的恢复页就能升：<b>重新传一次 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code></b>，走「日常使用」那一节的流程即可 —— 不用串口，<b>也不要勾「先重建 UBI」</b>。已经是 0.1.1 的可以跳过本节。</p>
+
+    <div class="callout warn"><b>0.1.1 刚放出来，可能还有 BUG。</b>新增的那几项——退回原厂、自动换 MAC、菜单新增项——都只在有限几台机器上跑过，踩到问题的可能性比 0.1.0 大。<b>机器现在能正常用、也不急着用新功能的，不必现在升</b> —— 停在 0.1.0 过几天，等问题暴露得差不多了再说，看<a href="./recovery-guide_0_1_0.html">0.1.0 存档教程</a>就行。<br><br>真把机器刷砖了需要救回来的，那就别等 —— 0.1.0 的恢复页本身一直能用，不影响救砖。</div>
 
     <div class="whatsnew">
       <div class="nw">
