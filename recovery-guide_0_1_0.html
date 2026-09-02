@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>网页救砖指南 Web 0.1.1（仅适用XG-040G-MD）</title>
+<title>网页救砖指南 Web 0.1.0（存档）</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap">
@@ -55,16 +55,6 @@ code{font-family:var(--mono); font-size:.88em; background:var(--sunk); border:1p
 a{color:var(--accent)}
 h1,h2,h3{text-wrap:balance}
 
-/* 串口日志 / 引导菜单原样照录 */
-.term{font-family:var(--mono); font-size:.8rem; line-height:1.7; margin:1rem 0 0;
-  background:#12161c; color:#c9d4e0; border:1px solid #262d36; border-radius:10px;
-  padding:.95rem 1.1rem; overflow-x:auto; white-space:pre; tab-size:4}
-.term b{color:#ffffff; font-weight:600}
-.term .r{color:#ff8f6b}
-.term .y{color:#e8c05e}
-.term .g{color:#7fd6a6}
-.term .m{color:#7b8798}
-
 /* ---------- layout ---------- */
 .page{max-width:1180px; margin:0 auto; padding:0 1.25rem 6rem; display:grid; grid-template-columns:220px minmax(0,1fr); gap:3rem}
 @media (max-width:900px){.page{grid-template-columns:1fr; padding:0 1rem 4rem}}
@@ -93,6 +83,8 @@ h1.title{margin:0 0 .7rem; font-size:clamp(1.9rem,4vw,2.6rem); font-weight:700; 
 .badge.accent{color:var(--accent); border-color:var(--accent-soft); background:var(--accent-soft)}
 .badge.ver{font-size:.82rem; font-weight:600; padding:.32rem .9rem; color:#fff;
   background:var(--accent); border-color:var(--accent)}
+.badge.stale{font-size:.82rem; font-weight:600; padding:.32rem .9rem;
+  color:var(--warn-tx); background:var(--warn-bg); border-color:var(--warn-ln)}
 
 /* ---------- 版本切换卡片 ---------- */
 .verlink{display:grid; grid-template-columns:auto 1fr auto; align-items:center; gap:.5rem 1rem;
@@ -100,8 +92,8 @@ h1.title{margin:0 0 .7rem; font-size:clamp(1.9rem,4vw,2.6rem); font-weight:700; 
   background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow);
   transition:border-color .15s, transform .15s}
 .verlink:hover{border-color:var(--accent); transform:translateY(-2px)}
-.verlink .k{font-family:var(--mono); font-size:.72rem; letter-spacing:.04em; color:#3b2a00;
-  background:var(--warn-ln); border-radius:99px; padding:.22rem .7rem; white-space:nowrap}
+.verlink .k{font-family:var(--mono); font-size:.72rem; letter-spacing:.04em; color:#fff;
+  background:var(--accent); border-radius:99px; padding:.22rem .7rem; white-space:nowrap}
 .verlink .t{font-weight:600; font-size:1rem}
 .verlink .d{grid-column:2; color:var(--dim); font-size:.87rem; line-height:1.55}
 .verlink .go{font-family:var(--mono); font-size:.78rem; color:var(--accent); white-space:nowrap}
@@ -110,18 +102,6 @@ h1.title{margin:0 0 .7rem; font-size:clamp(1.9rem,4vw,2.6rem); font-weight:700; 
   .verlink .d, .verlink .go{grid-column:1}
   .verlink .k{justify-self:start}
 }
-
-/* ---------- 新增功能表 ---------- */
-.whatsnew{display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; margin:1.6rem 0 0}
-@media (max-width:760px){.whatsnew{grid-template-columns:1fr}}
-.nw{background:var(--panel); border:1px solid var(--line); border-radius:14px;
-  padding:1.15rem 1.25rem 1.25rem; box-shadow:var(--shadow)}
-.nw .h{display:flex; align-items:baseline; gap:.55rem; margin-bottom:.45rem}
-.nw .h b{font-size:1rem}
-.nw .tagn{font-family:var(--mono); font-size:.68rem; color:var(--accent);
-  background:var(--accent-soft); border-radius:99px; padding:.14rem .55rem; white-space:nowrap}
-.nw .tagn.fix{color:var(--danger); background:var(--danger-bg)}
-.nw p{margin:0; color:var(--dim); font-size:.88rem; line-height:1.6}
 
 /* ---------- decision cards ---------- */
 .decide{display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin:2rem 0 0}
@@ -166,7 +146,7 @@ h2{margin:0; font-size:1.55rem; font-weight:700; letter-spacing:-.005em}
 .step .body{padding:0 0 2.4rem}
 .step h3{margin:.35rem 0 .5rem; font-size:1.12rem; font-weight:600}
 .step p{margin:0 0 .8rem; color:var(--text)}
-p.muted{color:var(--dim); font-size:.92rem}
+.step p.muted{color:var(--dim); font-size:.92rem}
 .step .media{margin:1rem 0}
 
 .callout{border-radius:10px; padding:.9rem 1.1rem; font-size:.92rem; margin:.9rem 0; border:1px solid}
@@ -234,8 +214,6 @@ table.info{width:100%; border-collapse:collapse; font-size:.92rem; margin:.5rem 
 table.info th{text-align:left; font-family:var(--mono); font-size:.72rem; color:var(--dim2); font-weight:600;
   letter-spacing:.03em; padding:.4rem .6rem; border-bottom:1px solid var(--line)}
 table.info td{padding:.55rem .6rem; border-bottom:1px solid var(--line-soft); vertical-align:top}
-table.info td .sub{color:var(--dim2); font-size:.78rem; font-family:var(--mono); margin-top:.15rem}
-section > h3{margin:2.4rem 0 .5rem; font-size:1.12rem; font-weight:600}
 table.info tr:last-child td{border-bottom:0}
 
 /* ---------- faq ---------- */
@@ -291,7 +269,6 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <a class="back" href="./">← 回门户</a>
   <span class="tag">开始</span>
   <a href="#decide">先判断你在哪一步</a>
-  <a href="#whatsnew">0.1.1 新增</a>
   <a href="#files">下载固件</a>
   <a href="#prep">准备工作</a>
   <span class="tag">A · 首次迁移（需要串口）</span>
@@ -302,29 +279,27 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <a href="#enter">进恢复页</a>
   <a href="#web-use">上传并刷写</a>
   <a href="#leds">面板灯</a>
-  <a href="#restore">退回原厂</a>
   <span class="tag">其他</span>
   <a href="#faq">常见问题</a>
-  <a href="./recovery-guide_0_1_0.html">0.1.0 存档教程</a>
 </nav>
 
 <main>
 
   <header class="hero">
     <div class="eyebrow"><span class="dot"></span>NOKIA XG-040G-MD · 图文教程</div>
-    <h1 class="title">网页救砖指南（仅适用XG-040G-MD）</h1>
+    <h1 class="title">网页救砖指南 · Web 0.1.0（存档）</h1>
     <p class="lede">给普通用户看的操作手册：怎么把这台路由器换成带浏览器救砖功能的 U-Boot，以及换好之后怎么用它。跟着步骤做，不需要懂 U-Boot 或 Linux。</p>
     <div class="badges">
-      <span class="badge ver">对应恢复页 Web 0.1.1</span>
+      <span class="badge stale">存档版 · 对应恢复页 Web 0.1.0</span>
       <span class="badge accent">仅适用 <code style="background:none;border:0;padding:0">ubi</code> 变体</span>
       <span class="badge">master-XG-040G-MD</span>
     </div>
 
-    <a class="verlink" href="./recovery-guide_0_1_0.html">
-      <span class="k">旧版</span>
-      <span class="t">你的机器还是 Web 0.1.0？</span>
-      <span class="d">恢复页右上角写着 <b>Web 0.1.0</b>、或者引导菜单标题是 <code>( ( ( OpenWrt ) ) )</code> 的，看存档版教程 —— 那一版没有「退回原厂」，菜单也只到第 8 项。<b>照本页升到 0.1.1 之后，回到本页即可。</b></span>
-      <span class="go">打开 0.1.0 存档教程 →</span>
+    <a class="verlink" href="./recovery-guide.html">
+      <span class="k">最新版</span>
+      <span class="t">这一页是留给 Web 0.1.0 的存档,内容不再更新</span>
+      <span class="d">如果你的恢复页右上角写着 <b>Web 0.1.1</b>、或者引导菜单标题是 <code>OpenWrt-Web 0.1.1</code>，请看最新版教程 —— 那边多了「退回原厂」、引导菜单手动进恢复页、出厂 MAC 丢失后的自动处理。</span>
+      <span class="go">打开最新版教程 →</span>
     </a>
 
     <div class="decide" id="decide">
@@ -349,35 +324,11 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
     </div>
 
     <div class="dl-block" id="files">
-      <h2 class="dl-title">下载最新 ubi-auto 固件</h2>
-      <p class="dl-sub">只列出 <code>master-XG-040G-MD</code> 分支最近一次自适应内存 <code>ubi</code> 构建。其它实验分支不会出现在这里。点文件名直接下，文件名不用改，网页会按名字做核对。</p>
-      <div class="dl" id="ubi-dl"><div class="err">正在读取最新 Release…</div></div>
+      <h2 class="dl-title">下载 0.1.0 对应的固件（已固定）</h2>
+      <p class="dl-sub">这一页固定列出 <code>XG-040G-MD-ubi-auto-20260831-47</code> 这一次构建，<b>不跟随最新 Release 变化</b> —— 存档教程里的每张截图、每一步都是照着它写的。想要新版本请到<a href="./recovery-guide.html">最新版教程</a>。点文件名直接下，文件名不用改，网页会按名字做核对。</p>
+      <div class="dl" id="ubi-dl"><div class="err">正在读取固定的 Release…</div></div>
     </div>
   </header>
-
-  <section id="whatsnew">
-    <div class="sec-head"><span class="sec-num">△</span><h2>0.1.1 比 0.1.0 多了什么</h2></div>
-    <p class="sec-sub">从 0.1.0 升上来，用现在这个 0.1.0 的恢复页就能升：<b>重新传一次 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code></b>，走「日常使用」那一节的流程即可 —— 不用串口，<b>也不要勾「先重建 UBI」</b>。已经是 0.1.1 的可以跳过本节。</p>
-
-    <div class="whatsnew">
-      <div class="nw">
-        <div class="h"><b>恢复页能退回原厂了</b><span class="tagn">新增</span></div>
-        <p>多了「退回原厂」一栏：整片写回 <code>all_flash.bin</code>，或者只写回 <code>ri</code>（出厂 MAC）、<code>bosa</code>（光模块参数）这两个卷。丢了出厂 MAC 的机器不用重刷，单独补 <code>ri</code> 就行 —— 见下方<a href="#restore">「退回原厂」</a>。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>出厂 MAC 没了会自动换一个</b><span class="tagn fix">修复</span></div>
-        <p>0.1.0 上如果 <code>ri</code> 卷是空的（点过「Reset all settings to factory defaults」或重建过 UBI），MAC 会变成 <code>ff:ff:ff:ff:ff:ff</code> —— 服务能起来，串口日志一切正常，<b>但网页就是打不开</b>。0.1.1 会认出这种情况，换成一个随机地址并在串口明确写出来。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>引导菜单多了两项</b><span class="tagn">新增</span></div>
-        <p>串口引导菜单里新增第 <b>9</b> 项「Start web recovery server」，不用再靠长按 reset 掐时机；第 <b>a</b> 项是项目和教程地址。菜单标题也从 <code>( ( ( OpenWrt ) ) )</code> 变成了 <code>OpenWrt-Web 0.1.1</code>，一眼能看出版本。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>串口一眼看清版本和 MAC</b><span class="tagn">新增</span></div>
-        <p>进入恢复服务时会打印版本号、本教程地址、项目地址，以及<b>当前正在用的 MAC</b>。网页打不开时先看这一行 —— 它能直接告诉你是不是上面那个 MAC 问题。</p>
-      </div>
-    </div>
-  </section>
 
   <section id="prep">
     <div class="sec-head"><span class="sec-num">00</span><h2>准备工作</h2></div>
@@ -535,7 +486,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
           <div class="callout danger"><b>齐闪期间唯一不能做的事是断电。</b>网线可以随时拔，写 flash 不经过网络；但断电会让 flash 处于半写状态，只能再用串口救。</div>
           <div class="callout warn"><b>灯灭了很久（明显超出正常开机时间）还是没进系统，直接给路由器断电重启一次即可。</b>有小概率会卡在重启过程里的 <code>Press x</code> 提示上等按键，没有串口连着时这一步没人按，看起来就像卡住了；重新上电通常就能正常继续，不用紧张。</div>
           <div class="callout ok">重启之后就是正常的 OpenWrt 系统了 —— 首次进系统会自动完成初始化。之后再也不用碰串口，日常升级和救砖都只靠这个网页。</div>
-          <div class="callout warn">重建 UBI 把出厂 MAC 也清空了，网络能用但 MAC 变成随机值 —— 串口上会明确写出来。想恢复真实 MAC，用<a href="#restore">「退回原厂」</a>把之前备份的 <code>ri</code> 写回去即可，<b>随时能做，不需要重刷固件</b>。</div>
+          <div class="callout warn">重建 UBI 把出厂 MAC 也清空了，网络能用但 MAC 变成随机值。想恢复真实 MAC，把之前备份出来的 <code>ri</code> 分区写回 UBI 的 <code>ri</code> 卷即可，随时能做，不需要重刷。</div>
         </div>
       </div>
     </div>
@@ -544,44 +495,13 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <!-- ================= PART B ================= -->
   <section id="enter">
     <div class="sec-head"><span class="sec-num">B</span><h2>日常使用 · 进恢复页</h2></div>
-    <p class="sec-sub">迁移完成之后，这个恢复页就一直带在这台路由器的 U-Boot 里。日常只用第一种方式就够了，不需要串口。</p>
+    <p class="sec-sub">迁移完成之后，这个恢复页就一直带在这台路由器的 U-Boot 里，不用串口。</p>
 
     <table class="info">
       <tr><th>什么时候</th><th>怎么进</th></tr>
-      <tr><td><b>想主动刷机 / 升级引导器</b><div class="sub">不用串口</div></td><td>先上电，等 1~2 秒<b>后再</b>按住机身 reset 键，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）。<b>进流水灯效果后再插入网线</b>（建议第 3 或第 4 个口）</td></tr>
-      <tr><td><b>手上正好接着串口</b><div class="sub">0.1.1 新增</div></td><td>开机看到引导菜单，选 <b>第 9 项</b> <code>Start web recovery server</code>（按数字 <kbd>9</kbd> 直接跳过去），不用掐 reset 的时机</td></tr>
+      <tr><td><b>想主动刷机 / 升级引导器</b></td><td>先上电，等 1~2 秒<b>后再</b>按住机身 reset 键，一直按着，等面板五个灯开始<b>流水</b>再松手（约 15 秒）。<b>进流水灯效果后再插入网线</b>（建议第 3 或第 4 个口）</td></tr>
     </table>
-    <p class="muted">两种方式进的是同一个服务。流水灯亮起来就是进去了，跟首次迁移那一步看到的是同一种灯效。这时再插网线，浏览器打开 192.168.1.1。</p>
-
-    <h3>0.1.1 的引导菜单长这样</h3>
-    <p>标题里带着恢复页版本号和 U-Boot 版本号，最后两项是 0.1.1 新加的（第 10 项的快捷键是字母 <kbd>a</kbd> —— U-Boot 的快捷键只有一位，数字用完就接字母）：</p>
-    <div class="term">      <b>OpenWrt-Web 0.1.1</b>       <span class="y">U-Boot 2026.07-ImmortalWrt-r…</span>
-
-  1. Run default boot command.
-  2. Boot system via TFTP
-  3. Boot production system from NAND
-  4. Load production system via TFTP then write to NAND
-  5. <span class="r">Load BL31+U-Boot FIP via TFTP then write to NAND</span>
-  6. <span class="r">Load BL2 preloader via TFTP then write to NAND</span>
-  7. Reboot
-  8. Reset all settings to factory defaults
-  9. <span class="r">Start web recovery server (http://192.168.1.1)</span>
-  a. About - github.com/Loong1996/ImmortalWrt-XG-040G-MD
-  0. Exit
-
-  <span class="m">Press UP/DOWN to move, ENTER to select, ESC to quit</span></div>
-    <div class="callout warn"><b>第 8 项「Reset all settings to factory defaults」平时不要点。</b>它会连出厂 MAC 一起清掉 —— 0.1.1 之后不至于让网页打不开（会自动换随机 MAC），但真实 MAC 就得靠<a href="#restore">「退回原厂」</a>把 <code>ri</code> 卷写回去才能拿回来。</div>
-
-    <h3>服务起来时串口会打印这些</h3>
-    <p>版本号、教程地址、项目地址，还有<b>当前正在用的 MAC</b>：</p>
-    <div class="term"><span class="g">Web recovery 0.1.1 by Loong</span>
-Guide   https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html
-Project https://github.com/Loong1996/ImmortalWrt-XG-040G-MD
-Using airoha-gdm1 device, MAC <b>90:03:2e:xx:xx:xx</b>
-Listening for HTTP on 192.168.1.1 port 80
-Handing out DHCP leases from 192.168.1.1
-Press Ctrl-C to abort</div>
-    <p class="muted">最后那个 MAC 是排查「服务起来了但网页打不开」的第一现场 —— 详见<a href="#faq">常见问题</a>里那一条。</p>
+    <p class="muted">流水灯亮起来就是进去了，跟首次迁移那一步看到的是同一种灯效。这时再插网线，浏览器打开 192.168.1.1。</p>
   </section>
 
   <section id="web-use">
@@ -637,81 +557,15 @@ Press Ctrl-C to abort</div>
     <div class="callout danger">拔网线随时安全，写 flash 不经过网络。<b>要命的是断电</b> —— 齐闪期间断电才是真的把机器写砖。</div>
   </section>
 
-  <section id="restore">
-    <div class="sec-head"><span class="sec-num">B</span><h2>退回原厂 <span class="badge ver" style="vertical-align:.25em">0.1.1 新增</span></h2></div>
-    <p class="sec-sub">恢复页最下面多了一栏「退回原厂」。里面是<b>两件完全不同的事</b>，看着像大小之分，其实一个是把整台机器变回出厂状态，另一个只是补一小块出厂数据。别混着用 —— 网页也不允许同时选。</p>
-
-    <table class="info">
-      <tr><th></th><th>整片恢复</th><th>恢复出厂标识</th></tr>
-      <tr><td><b>用什么文件</b></td><td><code>all_flash.bin</code>，约 235.6 MiB</td><td><code>ri</code> 或 <code>bosa</code>，各约 256 KiB</td></tr>
-      <tr><td><b>动了什么</b></td><td>整片 flash 全部重写</td><td>只重写对应的那一个 UBI 卷</td></tr>
-      <tr><td><b>这个救砖页</b></td><td><b>连它一起没了</b></td><td>不动</td></tr>
-      <tr><td><b>之后</b></td><td>回到原厂系统，要再回 OpenWrt 得<b>重新走一次串口迁移</b></td><td>照常开机，引导器和固件都没变</td></tr>
-      <tr><td><b>什么时候用</b></td><td>真的想彻底还原这台机器</td><td>丢了出厂 MAC / 光模块参数，想补回来</td></tr>
-    </table>
-
-    <div class="callout danger"><b>两个操作用的文件都必须是你自己这台机器备份出来的。</b><code>ri</code> 里存的是这台机器独有的出厂 MAC，<code>bosa</code> 是这颗光模块的标定参数 —— 拿别人的文件写进去，等于把别人的身份刷到你机器上。</div>
-
-    <h3>只补出厂 MAC（常见情况）</h3>
-    <p>首次迁移勾过「先重建 UBI」，或者点过引导菜单第 8 项，出厂 MAC 就没了。0.1.1 会自动换一个随机 MAC 让网络能用，但想拿回真实 MAC 就要把当初备份的 <code>ri</code> 写回去。<b>随时可以做，不用重刷固件。</b></p>
-    <div class="steps">
-      <div class="step">
-        <div class="rule"><div class="num">1</div><div class="line"></div></div>
-        <div class="body">
-          <h3>进恢复页，展开最下面的「退回原厂」</h3>
-          <p>「整片恢复」那一格<b>留空</b>，在下面的下拉框里选 <code>ri</code>，然后选你备份出来的那个 256 KiB 文件。</p>
-          <div class="phone-wrap">
-            <div class="phone"><iframe title="网页救砖界面 · 退回原厂" srcdoc="STATE_STOCK"></iframe></div>
-          </div>
-          <p class="phone-cap">▲ 「退回原厂」展开后的样子，这里只选了单个卷</p>
-        </div>
-      </div>
-      <div class="step">
-        <div class="rule"><div class="num">2</div><div class="line"></div></div>
-        <div class="body">
-          <h3>确认框会写明只动这一个卷</h3>
-          <p>确认框列出的步骤是「挂载 UBI → 写回 <code>ri</code> 卷的出厂内容 → 自动重启」，并提示「只会重写 <code>ri</code> 这一个 UBI 卷，引导器与固件不动」。核对无误后点「仍要写入」。写入很快，灯齐闪一下就重启了。</p>
-        </div>
-      </div>
-    </div>
-
-    <h3>整片刷回原厂</h3>
-    <p>把当初迁移前备份的整片 <code>all_flash.bin</code> 传进「整片恢复」那一格。这个文件很大，上传和写入都<b>比刷固件慢得多</b>，确认框里会把「最慢的一步，别断电」单独标出来。</p>
-    <div class="callout warn"><b>分区表不在 flash 上，跟着固件走。</b>所以哪怕现在这个 U-Boot 只认得 <code>bl2</code> + <code>ubi</code> 两块，把出厂字节按出厂偏移整片写回去，原厂的分区划分也会跟着回来 —— 不需要先「换回原厂分区表」再刷。</div>
-    <div class="callout danger"><b>写完这台机器上就没有这个救砖页了。</b>之后想再回 OpenWrt，得重新拆机接 USB-TTL 串口，照「首次迁移」从头走一遍。动手之前先确认串口线还在。</div>
-    <p class="muted">没有 <code>all_flash.bin</code>？那就只能走串口了 —— 这个文件只能在机器还是原厂状态时备份出来，事后无法重建。备份方法见仓库里的 <code>docs/backup-and-restore.md</code>。</p>
-
-    <h3>选错了网页会直接拦住</h3>
-    <p>0.1.1 的确认框分两级：<b>橙色警告</b>只是提醒，还能点「仍要写入」；<b>加粗的硬错误</b>会直接把写入按钮藏掉，必须回去改。会触发硬错误的有四种：</p>
-    <ul class="check">
-      <li><span class="box"></span><div><b>整片恢复和单分区恢复同时选了</b><div class="sub">两件事，只能挑一件</div></div></li>
-      <li><span class="box"></span><div><b>退回原厂和刷 OpenWrt 固件混在一起</b><div class="sub">方向相反，网页不会替你猜先后</div></div></li>
-      <li><span class="box"></span><div><b>选了分区文件，但没选是哪个分区</b><div class="sub">下拉框还停在「— 不恢复 —」</div></div></li>
-      <li><span class="box"></span><div><b>选了分区，但没有选文件</b><div class="sub">反过来的情况</div></div></li>
-    </ul>
-  </section>
-
   <section id="faq">
     <div class="sec-head"><span class="sec-num">?</span><h2>常见问题</h2></div>
-
-    <details class="faq"><summary>从 0.1.0 升到 0.1.1，要传什么？要勾「先重建 UBI」吗？</summary>
-      <div class="a"><b>把 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code> 这两个引导文件重新传一次，不要勾「先重建 UBI」。</b>用现在这个 0.1.0 的恢复页就能升：进恢复页 → 展开「引导程序」 → BL2 那一格选 preloader、U-Boot 那一格选 fip → 上传并刷写。固件那一格可以留空，日常固件跟这次升级无关。<br><br>重启之后引导菜单标题就会变成 <code>OpenWrt-Web 0.1.1</code>，菜单也多出第 9、第 10 项。<b>「先重建 UBI」千万别勾</b> —— 它会把出厂 MAC 一起擦掉，升级根本用不着；BL2 是直接写 <code>bl2</code> 分区的，U-Boot(fip) 只替换 UBI 里的 <code>fip</code> 卷，两者都不会碰到你的固件和设置。</div>
-    </details>
-
-    <details class="faq"><summary>升上来之后，引导菜单标题还是老的 / 新菜单项没出现？</summary>
-      <div class="a">0.1.1 会在启动时自己比对一次菜单版本，发现保存的环境变量落后就把菜单项重新导入并存盘，串口上会看到一行 <code>Boot menu: refreshing saved environment for v2</code>。这个动作发生在<b>新 U-Boot 第一次真正开机的时候</b>，所以刷完 fip 之后至少要完整重启一次才看得到。<b>不需要</b>去点「Reset all settings to factory defaults」—— 那是 0.1.0 时代的办法，代价是连出厂 MAC 一起没了。</div>
-    </details>
-
-    <details class="faq"><summary>面板灯在流水、串口也说服务起来了，但 192.168.1.1 就是打不开</summary>
-      <div class="a">先看串口那行 <code>Using … device, MAC …</code>。如果 MAC 是 <code>ff:ff:ff:ff:ff:ff</code>，就是这个原因：<code>ri</code> 卷被擦空了（重建过 UBI，或点过引导菜单第 8 项），U-Boot 把擦除态的 flash 当成 MAC 读了出来。这个地址是广播地址，DHCP 本身是广播所以能拿到 IP，但设备回给你的每一个单播包都会被对端丢掉 —— 表现就是「什么都正常，就是打不开」。<br><br><b>0.1.1 已经修了</b>：认出这种情况会自动换一个随机 MAC，串口上会明说 <code>ethaddr is ff:ff:ff:ff:ff:ff … a generated address will be used and saved</code>。还停在 0.1.0 的话，可以在串口里 <code>setenv ethaddr &lt;机身标签上的 MAC&gt;</code> 再 <code>saveenv</code> 临时解决，然后照上面的办法升到 0.1.1。想彻底拿回真实 MAC，用<a href="#restore">「退回原厂」</a>把备份的 <code>ri</code> 写回去。</div>
-    </details>
 
     <details class="faq"><summary>已经刷过 preloader 和 fip 了，以后升级还要再传这两个文件、勾「先重建 UBI」吗？</summary>
       <div class="a">不用。日常更新<b>只传固件</b>就够了。BL2 和 U-Boot 走的是不同的写入方式：BL2 直接写 <code>mtd</code> 分区，完全不碰 UBI；U-Boot(fip) 只替换 UBI 里 <code>fip</code> 这一个卷，两者都不需要先清空重建。「先重建 UBI」只在<b>从别的布局第一次换过来</b>这一种情况下才需要勾，日常升级勾上反而会把出厂 MAC 和所有设置一起清空。</div>
     </details>
 
     <details class="faq"><summary>想从这个 U-Boot 换回 tcboot，能靠这个网页操作吗？</summary>
-      <div class="a">换回 <b>原厂</b>可以 —— 0.1.1 的<a href="#restore">「整片恢复」</a>就是干这个的，前提是你手上有这台机器迁移前备份的 <code>all_flash.bin</code>。<br><br>换成 <b>tcboot</b> 不行。tcboot 是另一套引导程序和分区布局，这个网页只认自己的 <code>bl2</code> 分区和 UBI 里的几个卷，写不了它。<code>ubi</code> 和 <code>tcboot</code> 之间互相切换在这个项目里都算「完整刷机」，要走 tcboot 自己的刷机方式，不是这份文档覆盖的范围。</div>
+      <div class="a">不能。这个网页是编在 <code>ubi</code> 布局的 U-Boot 里的，它只认自己的 <code>bl2</code> 分区和 UBI 里的几个卷，没有能力写 tcboot 用的那种引导程序和分区表。<code>ubi</code> 和 <code>tcboot</code> 之间互相切换在这个项目里都算「完整刷机」，需要走 tcboot 自己的刷机方式，不是这份文档覆盖的范围。</div>
     </details>
 
     <details class="faq"><summary>现在是原厂引导，想直接换成这个网页版 U-Boot，要勾「先重建 UBI」吗？</summary>
@@ -732,8 +586,8 @@ Press Ctrl-C to abort</div>
   </section>
 
   <footer class="credit">
-    <div><a href="./">← 回门户</a> · <a href="./recovery-guide_0_1_0.html">0.1.0 存档教程</a></div>
-    <div>本教程对应恢复页 <b>Web 0.1.1</b>，只覆盖 <code>master-XG-040G-MD</code> 分支的 <code>ubi</code> 变体。</div>
+    <div><a href="./">← 回门户</a> · <a href="./recovery-guide.html">最新版教程 →</a></div>
+    <div>存档页：对应恢复页 <b>Web 0.1.0</b>，固件固定在 <code>XG-040G-MD-ubi-auto-20260831-47</code>，只覆盖 <code>master-XG-040G-MD</code> 分支的 <code>ubi</code> 变体。内容不再更新。</div>
     <div>作者 <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD" target="_blank" rel="noopener">Loong</a></div>
   </footer>
 
@@ -744,14 +598,11 @@ Press Ctrl-C to abort</div>
 (function(){
   var box = document.getElementById("ubi-dl");
   if (!box) return;
-  var API = "https://api.github.com/repos/Loong1996/ImmortalWrt-XG-040G-MD/releases?per_page=100";
-  function isMasterUbiAuto(rel){
-    if (!rel || rel.draft || rel.prerelease) return false;
-    if (!/ubi-auto/i.test(rel.tag_name || "")) return false;
-    // tag 不带分支名。正文是「目标分支：master-XG-040G-MD」，
-    // 必须整段匹配，否则会误收 master-XG-040G-MD-httpd 这类开发分支。
-    return /目标分支：master-XG-040G-MD\s*(?:\r?\n|$)/.test(rel.body || "");
-  }
+  // 存档页：固定在这一次 Release，不跟随最新构建。
+  // 这里按 tag 直取单个 release，而不是像最新版教程那样扫列表挑第一个。
+  var TAG = "XG-040G-MD-ubi-auto-20260831-47";
+  var REL_URL = "https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/releases/tag/" + TAG;
+  var API = "https://api.github.com/repos/Loong1996/ImmortalWrt-XG-040G-MD/releases/tags/" + TAG;
   function fmt(n){
     if (n >= 1048576) return (n / 1048576).toFixed(1) + " MiB";
     if (n >= 1024) return (n / 1024).toFixed(0) + " KiB";
@@ -773,18 +624,14 @@ Press Ctrl-C to abort</div>
   }
   fetch(API, {headers:{"Accept":"application/vnd.github+json"}})
     .then(function(r){ if (!r.ok) throw new Error(String(r.status)); return r.json(); })
-    .then(function(list){
-      var rel = null;
-      for (var i = 0; i < list.length; i++) {
-        if (isMasterUbiAuto(list[i])) { rel = list[i]; break; }
-      }
-      if (!rel) throw new Error("no master ubi-auto");
-      var files = (rel.assets || []).filter(function(a){
+    .then(function(rel){
+      if (!rel || !rel.assets) throw new Error("no release");
+      var files = rel.assets.filter(function(a){
         return /^immortalwrt-/.test(a.name) && !/\.manifest$/.test(a.name);
       }).sort(function(a, b){ return rank(a.name) - rank(b.name); });
       if (!files.length) throw new Error("no files");
-      var html = '<div class="dl-head"><span class="rel">' + rel.name + '</span>'
-        + '<a class="tag" href="' + rel.html_url + '" target="_blank" rel="noopener">打开 Release →</a></div>';
+      var html = '<div class="dl-head"><span class="rel">' + (rel.name || TAG) + '</span>'
+        + '<a class="tag" href="' + (rel.html_url || REL_URL) + '" target="_blank" rel="noopener">打开 Release →</a></div>';
       files.forEach(function(a){
         var r = role(a.name);
         html += '<a class="row" href="' + a.browser_download_url + '">'
@@ -796,27 +643,25 @@ Press Ctrl-C to abort</div>
       box.innerHTML = html;
     })
     .catch(function(){
-      box.innerHTML = '<div class="err">没拉到文件列表，请到 '
-        + '<a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/releases" target="_blank" rel="noopener">Releases</a> '
-        + '选正文写着目标分支 <code>master-XG-040G-MD</code>、标题带 <code>ubi-auto</code> 的那次，下载 <code>immortalwrt-</code> 开头的文件。</div>';
+      box.innerHTML = '<div class="err">没拉到文件列表，请直接打开 '
+        + '<a href="' + REL_URL + '" target="_blank" rel="noopener">' + TAG + '</a>'
+        + '，下载 <code>immortalwrt-</code> 开头的文件。</div>';
     });
 })();
 (function(){
-  var CSS = "*{box-sizing:border-box}body{margin:0;padding:1.5rem 1.1rem;background:var(--bg);color:var(--fg);font:14.5px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif}:root{--bg:#f4f6f8;--fg:#1b1f24;--card:#fff;--line:#dde3ea;--ac:#2563eb;--mut:#6b7280;--wbg:#fff8e1;--wln:#e5b567}h1{font-size:1.2rem;margin:0 0 .12rem}.sub{color:var(--mut);font-size:.82rem;margin:0 0 1.1rem}.c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem 1.05rem;margin-bottom:.9rem}.f{display:block;margin-bottom:1rem}.f:last-child{margin-bottom:0}.n{font-weight:600;font-size:.92rem}.h{color:var(--mut);font-size:.76rem;font-family:ui-monospace,Menlo,monospace}input[type=file]{display:block;width:100%;margin-top:.4rem;font-size:.8rem;color:var(--mut)}select{display:block;width:100%;margin-top:.45rem;padding:.45rem;border:1px solid var(--line);border-radius:.4rem;background:var(--card);color:var(--fg);font:inherit;font-size:.82rem}summary{cursor:pointer;font-weight:600;color:var(--mut);font-size:.88rem}details[open] summary{margin-bottom:.9rem;color:var(--fg)}b{white-space:nowrap}.warn{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.65rem .8rem;font-size:.8rem;margin-top:.5rem}button{width:100%;padding:.75rem;font:inherit;font-weight:600;font-size:.92rem;color:#fff;background:var(--ac);border:0;border-radius:9px;cursor:pointer}.pw{height:11px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:.8rem;box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}.pb{height:100%;border-radius:99px;background:var(--ac);background-image:linear-gradient(45deg,rgba(255,255,255,.22) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.22) 50%,rgba(255,255,255,.22) 75%,transparent 75%,transparent);background-size:1rem 1rem}.ps{text-align:center;margin:.5rem 0 0;color:var(--mut);font-size:.8rem;font-variant-numeric:tabular-nums}.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:1rem;z-index:9}.mask[data-on]{display:flex}.dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.05rem 1.15rem;max-width:22rem;width:100%;box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}.dlg h2{margin:0 0 .5rem;font-size:.96rem}.list{font-size:.82rem;border-top:1px solid var(--line);padding-top:.5rem}.wr{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.55rem .7rem;font-size:.8rem;margin-top:.55rem}.btns{display:flex;gap:.55rem;margin-top:1rem}.btns button{flex:1}.no{background:transparent;color:var(--mut);border:1px solid var(--line)}.danger{background:#b45309}.sr{display:flex;justify-content:space-between;gap:1rem;padding:.18rem 0}.sr .k{color:var(--mut)}.sr .v{font-variant-numeric:tabular-nums}.bad{color:#a35a00}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.2rem}.top .sub{margin-bottom:0}.tb{width:auto;flex:none;padding:.2rem .55rem;font-size:.95rem;background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:99px}.ver{font-size:.6rem;font-weight:600;color:var(--ac);border:1px solid;border-radius:99px;padding:.06rem .45rem;vertical-align:.15em;white-space:nowrap}table{width:100%;border-collapse:collapse;font-size:.82rem}td{padding:.28rem 0;vertical-align:top}td:first-child{width:5rem;color:var(--mut);white-space:nowrap}footer{text-align:center;color:var(--mut);font-size:.76rem;margin-top:1.4rem;line-height:1.5}footer .v{font-family:ui-monospace,Menlo,monospace;font-size:.7rem;word-break:break-all}a{color:var(--ac);text-decoration:none}";
+  var CSS = "*{box-sizing:border-box}body{margin:0;padding:1.5rem 1.1rem;background:var(--bg);color:var(--fg);font:14.5px/1.65 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'PingFang SC','Microsoft YaHei',sans-serif}:root{--bg:#f4f6f8;--fg:#1b1f24;--card:#fff;--line:#dde3ea;--ac:#2563eb;--mut:#6b7280;--wbg:#fff8e1;--wln:#e5b567}h1{font-size:1.2rem;margin:0 0 .12rem}.sub{color:var(--mut);font-size:.82rem;margin:0 0 1.1rem}.c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem 1.05rem;margin-bottom:.9rem}.f{display:block;margin-bottom:1rem}.f:last-child{margin-bottom:0}.n{font-weight:600;font-size:.92rem}.h{color:var(--mut);font-size:.76rem;font-family:ui-monospace,Menlo,monospace}input[type=file]{display:block;width:100%;margin-top:.4rem;font-size:.8rem;color:var(--mut)}summary{cursor:pointer;font-weight:600;color:var(--mut);font-size:.88rem}details[open] summary{margin-bottom:.9rem;color:var(--fg)}b{white-space:nowrap}.warn{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.65rem .8rem;font-size:.8rem;margin-top:.5rem}button{width:100%;padding:.75rem;font:inherit;font-weight:600;font-size:.92rem;color:#fff;background:var(--ac);border:0;border-radius:9px;cursor:pointer}.pw{height:11px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:.8rem;box-shadow:inset 0 1px 2px rgba(0,0,0,.18)}.pb{height:100%;border-radius:99px;background:var(--ac);background-image:linear-gradient(45deg,rgba(255,255,255,.22) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.22) 50%,rgba(255,255,255,.22) 75%,transparent 75%,transparent);background-size:1rem 1rem}.ps{text-align:center;margin:.5rem 0 0;color:var(--mut);font-size:.8rem;font-variant-numeric:tabular-nums}.mask{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:1rem;z-index:9}.mask[data-on]{display:flex}.dlg{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.05rem 1.15rem;max-width:22rem;width:100%;box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}.dlg h2{margin:0 0 .5rem;font-size:.96rem}.list{font-size:.82rem;border-top:1px solid var(--line);padding-top:.5rem}.wr{background:var(--wbg);border:1px solid var(--wln);border-radius:8px;padding:.55rem .7rem;font-size:.8rem;margin-top:.55rem}.btns{display:flex;gap:.55rem;margin-top:1rem}.btns button{flex:1}.no{background:transparent;color:var(--mut);border:1px solid var(--line)}.danger{background:#b45309}.sr{display:flex;justify-content:space-between;gap:1rem;padding:.18rem 0}.sr .k{color:var(--mut)}.sr .v{font-variant-numeric:tabular-nums}.bad{color:#a35a00}.top{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;margin-bottom:1.2rem}.top .sub{margin-bottom:0}.tb{width:auto;flex:none;padding:.2rem .55rem;font-size:.95rem;background:transparent;color:var(--mut);border:1px solid var(--line);border-radius:99px}.ver{font-size:.6rem;font-weight:600;color:var(--ac);border:1px solid;border-radius:99px;padding:.06rem .45rem;vertical-align:.15em;white-space:nowrap}table{width:100%;border-collapse:collapse;font-size:.82rem}td{padding:.28rem 0;vertical-align:top}td:first-child{width:5rem;color:var(--mut);white-space:nowrap}footer{text-align:center;color:var(--mut);font-size:.76rem;margin-top:1.4rem;line-height:1.5}footer .v{font-family:ui-monospace,Menlo,monospace;font-size:.7rem;word-break:break-all}a{color:var(--ac);text-decoration:none}";
 
   var HEAD = "<head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><style>" + CSS + "</style></head>";
 
-  var IDLE_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.1</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>…-squashfs-sysupgrade.itb</span><input type=file></label><details><summary>引导程序（仅首次迁移需要）</summary><label class=f><span class=n>BL2</span><br><span class=h>…-preloader.bin</span><input type=file></label><label class=f><span class=n>U-Boot</span><br><span class=h>…-bl31-uboot.fip</span><input type=file></label><div class=warn><label><input type=checkbox> <b>先重建 UBI</b> —— 擦掉全部卷，包括出厂 MAC、U-Boot 环境与所有设置。只有从 tcboot / 原厂布局首次迁移时才需要。</label></div></details><details><summary>退回原厂（会擦掉网页救砖本身）</summary></details></div><button>上传并刷写</button></body>";
+  var IDLE_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.0</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>…-squashfs-sysupgrade.itb</span><input type=file></label><details><summary>引导程序（仅首次迁移需要）</summary><label class=f><span class=n>BL2</span><br><span class=h>…-preloader.bin</span><input type=file></label><label class=f><span class=n>U-Boot</span><br><span class=h>…-bl31-uboot.fip</span><input type=file></label><div class=warn><label><input type=checkbox> <b>先重建 UBI</b> —— 擦掉全部卷，包括出厂 MAC、U-Boot 环境与所有设置。只有从 tcboot / 原厂布局首次迁移时才需要。</label></div></details></div><button>上传并刷写</button></body>";
 
-  var STOCK_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.1</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>…-squashfs-sysupgrade.itb</span><input type=file></label><details><summary>引导程序（仅首次迁移需要）</summary></details><details open><summary>退回原厂（会擦掉网页救砖本身）</summary><div class=warn><b>整片恢复</b>会把这个页面一起擦掉 —— 要再回 OpenWrt，得重新走一次 USB-TTL 串口迁移。写入期间断电必砖；235 MiB 比刷固件慢得多，别当成卡死。<br><b>恢复出厂标识</b>只写对应的 UBI 卷，不动引导器和固件，丢了出厂 MAC 就用它。<br>两者的文件都必须是<b>你自己这台</b>备份出来的。</div><label class=f><span class=n>整片恢复</span><br><span class=h>all_flash.bin · 约 235.6 MiB</span><input type=file></label><label class=f><span class=n>或者只恢复出厂标识</span><br><span class=h>写的是 UBI 卷，不动其他任何东西</span><select><option>— 不恢复 —</option><option selected>ri · 出厂 MAC · 约 256 KiB</option><option>bosa · 光模块参数 · 约 256 KiB</option></select><input type=file></label></details></div><button>上传并刷写</button></body>";
-
-  var MIGRATE_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.1</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>immortalwrt-…-ubi-squashfs-sysupgrade.itb ✓</span><input type=file></label><details open><summary>引导程序（仅首次迁移需要）</summary><label class=f><span class=n>BL2</span><br><span class=h>immortalwrt-…-ubi-preloader.bin ✓</span><input type=file></label><label class=f><span class=n>U-Boot</span><br><span class=h>immortalwrt-…-ubi-bl31-uboot.fip ✓</span><input type=file></label><div class=warn><label><input type=checkbox checked> <b>先重建 UBI</b> —— 擦掉全部卷，包括出厂 MAC、U-Boot 环境与所有设置。只有从 tcboot / 原厂布局首次迁移时才需要。</label></div></details></div><button>上传并刷写</button></body>";
+  var MIGRATE_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.0</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>immortalwrt-…-ubi-squashfs-sysupgrade.itb ✓</span><input type=file></label><details open><summary>引导程序（仅首次迁移需要）</summary><label class=f><span class=n>BL2</span><br><span class=h>immortalwrt-…-ubi-preloader.bin ✓</span><input type=file></label><label class=f><span class=n>U-Boot</span><br><span class=h>immortalwrt-…-ubi-bl31-uboot.fip ✓</span><input type=file></label><div class=warn><label><input type=checkbox checked> <b>先重建 UBI</b> —— 擦掉全部卷，包括出厂 MAC、U-Boot 环境与所有设置。只有从 tcboot / 原厂布局首次迁移时才需要。</label></div></details></div><button>上传并刷写</button></body>";
 
   var CONFIRM_BODY = "<body style=\"padding:0\"><div class=mask data-on><div class=dlg><h2>确认写入</h2><div class=list><div class=sr><span class=k>固件</span><span class=v>18.9 MiB</span></div><div class=sr><span class=k>BL2</span><span class=v>109.5 KiB</span></div><div class=sr><span class=k>U-Boot</span><span class=v>312.8 KiB</span></div></div><div class=wr>重建 UBI 会擦掉出厂 MAC、U-Boot 环境与全部设置</div><div class=btns><button class=no>取消</button><button class=danger>仍要写入</button></div></div></div></body>";
 
-  var PROGRESS_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.1</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>…-squashfs-sysupgrade.itb ✓</span><input type=file disabled></label></div><button disabled>上传中…</button><div class=pw><div class=pb style=\"width:63%\"></div></div><p class=ps>已上传 11.9 / 18.9 MiB（63%）</p></body>";
+  var PROGRESS_BODY = "<body><div class=top><div><h1>固件恢复 <span class=ver>Web 0.1.0</span></h1><p class=sub>Nokia XG-040G-MD &middot; U-Boot 恢复模式</p></div><button type=button class=tb>&#9680;</button></div><div class=c><label class=f><span class=n>固件</span><br><span class=h>…-squashfs-sysupgrade.itb ✓</span><input type=file disabled></label></div><button disabled>上传中…</button><div class=pw><div class=pb style=\"width:63%\"></div></div><p class=ps>已上传 11.9 / 18.9 MiB（63%）</p></body>";
 
-  var map = {STATE_IDLE:IDLE_BODY, STATE_MIGRATE_FORM:MIGRATE_BODY, STATE_CONFIRM:CONFIRM_BODY, STATE_PROGRESS:PROGRESS_BODY, STATE_STOCK:STOCK_BODY};
+  var map = {STATE_IDLE:IDLE_BODY, STATE_MIGRATE_FORM:MIGRATE_BODY, STATE_CONFIRM:CONFIRM_BODY, STATE_PROGRESS:PROGRESS_BODY};
   document.querySelectorAll('iframe[srcdoc]').forEach(function(f){
     var key = f.getAttribute('srcdoc');
     if (map[key]) f.setAttribute('srcdoc', "<!doctype html><html lang=zh>" + HEAD + map[key] + "</html>");
