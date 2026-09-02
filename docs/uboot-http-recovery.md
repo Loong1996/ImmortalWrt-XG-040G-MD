@@ -14,14 +14,17 @@
 
 ### 进恢复页
 
-两条路，都不需要串口：
+三条路，前两条不需要串口：
 
 | 什么时候 | 怎么进 |
 | --- | --- |
 | 想主动刷机 | **按住 reset 上电**，一直按着，等面板五个绿灯开始**流水**再松手（约 15 秒） |
 | 机器起不来了 | **什么都不用做** —— 从 NAND 引导失败后会自己循环起网页，插上网线即可 |
+| 手上接着串口（0.1.1） | 引导菜单上用 ↑/↓ **选到第 9 项** 回车 —— `bootmenu_8` 直接 `httpd`，不经 `_firstboot`，不用掐 reset 的时机 |
 
 这段时间里有一部分是 bootmenu 的等待。`button reset` 读的是那一瞬间的电平，不是累计计时，所以「一直按住」比「按几下」可靠。**流水灯亮起来就是进去了。**
+
+第三条走的是另一条代码路径：`check_buttons` 在 `_firstboot` 里，而第 9 项是 bootmenu 自己的条目，两者互不依赖 —— 所以它在**首次迁移**那种 flash 布局还不对的场景下照样能用，见下面第 ② 步。
 
 ### 传文件
 
@@ -68,13 +71,22 @@ immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-bl31-uboot.fip     ← BL2 收，
 
 传两个是硬约束：BootROM 只把 BL2 收进 SRAM，那里放不下 431 KB，它也不解析 FIP 里的 BL33。
 
-**reset 一直按着不要松。**
+**reset 一直按着不要松** —— 或者想好了走下一步那张表里「菜单上选第 9 项」那一行。
 
 **② U-Boot 在 RAM 里起来，直接进网页**
 
+两种走法，任选一种：
+
+| 走法 | 做什么 | 代价 |
+| --- | --- | --- |
+| **reset 一直按着** | 让 bootmenu 自己超时进 `_firstboot`，`check_buttons` 接住 | 没有时间窗口，最稳 |
+| **菜单上选第 9 项** | `bootmenu_8` 直接 `httpd`，根本不进 `_firstboot` | 只有 `bootdelay=3` 那 3 秒 |
+
 `_firstboot` 的第一件事就是 `run check_buttons` —— 在碰 flash 之前先看按键。这一刀是「一轮 xmodem 就够」的全部依据：没有它，RAM 里的 U-Boot 会直奔 `_init_env`，在异构 flash 布局上建卷失败、回落 `ubi_format` 然后 `reset`，把刚传进来的东西一起丢掉。
 
-看到流水灯就松手。
+> 第 9 项绕开了这整条路径，所以它不需要 `check_buttons` 保护。但**两者必须命中一个** —— 既松了 reset、又没在 3 秒内选中第 9 项回车，菜单超时进 `_firstboot`，`check_buttons` 不成立，上面那条 `ubi_format` + `reset` 的路就走实了，这一轮 xmodem 白传，回 ① 重来。不伤 flash，只伤时间。
+
+看到流水灯就成了（按着 reset 的这时松手）。
 
 **③ 网页一次传完三样**
 
