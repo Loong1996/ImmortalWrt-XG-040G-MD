@@ -5,17 +5,22 @@
 变量撞名）。这里直接改 immortalwrt 源码树里的模板：banner 仍走 %D %V %C
 替换。
 
-LuCI 概览的「固件版本」来自 ubus system.board 的 release.description，
-也就是 /etc/openwrt_release 的 DISTRIB_DESCRIPTION。base-files 打包时
-从 package/base-files/files/ 现拷现替换，和 SSH banner 同一条路。
+LuCI 概览的「固件版本」= release.description + ' / ' + luciversion。
+description 来自 ubus system.board，而 procd 读的是 /usr/lib/os-release 的
+OPENWRT_RELEASE（procd system.c 把这个键改名成 description），**不是**
+/etc/openwrt_release 的 DISTRIB_DESCRIPTION。后者没有任何 LuCI 路径会读，
+这里一并追加只是为了两个文件口径一致（用户 cat 出来不会对不上）。
+base-files 打包时从 package/base-files/files/ 现拷现替换，和 banner 同一条路。
 
 不要改 luci-mod-status 的 10_system.js：那份源码会在编包时 minify 进
-build_dir，工具链缓存命中后不会重编，补丁进不了固件。
+build_dir，工具链缓存命中后不会重编，补丁进不了固件。曾经这么干过，见下面
+strip_legacy_luci()。
 
 幂等：已含仓库 URL 则跳过。feeds 更新 / git reset 之后再跑一次即可。
 """
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -23,6 +28,18 @@ from pathlib import Path
 BANNER_LINE = " Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
 RELEASE_SUFFIX = " / Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
 MARKER = "github.com/Loong1996/ImmortalWrt-XG-040G-MD"
+
+# 2026-08-31 之前的版本改的是 10_system.js，把后缀拼在 (luciversion || '') 外面。
+# 那次改动落在 feeds 源码树里，后来只是让脚本不再去改，没有撤回已经改进去的行——
+# 源码树一旦被复用（本地 --no-update、或 feeds update 拉不动已修改的文件），
+# 这一行就一直在，导致管理页上作者信息出现两次：一次来自 description，一次
+# 来自这里。表现是拔掉网线后两个 ubus 都失败，那一行仍剩「LuCI 未知版本 / 作者」。
+LEGACY_LUCI_OLD = "(luciversion || '')"
+LEGACY_LUCI_NEW = "(luciversion || '') + '%s'" % RELEASE_SUFFIX
+
+# 编译产物里的 10_system.js 已被 minify，格式和源码不同，不去动它；
+# 改完源码后直接删掉这个包的产物，逼它重编重打包。
+_SKIP_DIR = {"build_dir", "staging_dir", "staging_dir_host", "tmp", "bin", "dl"}
 
 
 def die(msg: str) -> None:
@@ -94,6 +111,45 @@ def patch_release(root: Path) -> None:
     )
 
 
+def _drop_luci_mod_status_artifacts(root: Path) -> None:
+    """删掉 luci-mod-status 的编译产物。
+
+    luci.mk 的 Package/install 是从 ${CURDIR}/htdocs 现拷的，但拷进 ipk 之后
+    ipk 会被缓存，改回源码并不会让它重新打包。所以撤销时必须连产物一起删。
+    只影响这一个包，最坏结果是多编几秒。
+    """
+    for pat in ("build_dir/*/luci-mod-status*", "bin/packages/*/*/luci-mod-status*"):
+        for p in root.glob(pat):
+            if p.is_dir():
+                shutil.rmtree(p, ignore_errors=True)
+            else:
+                p.unlink(missing_ok=True)
+            print("    已删除产物: %s" % p.relative_to(root))
+
+
+def strip_legacy_luci(root: Path) -> None:
+    """撤销旧版本对 10_system.js 的改动，让残留的源码树自愈。"""
+    changed = 0
+    seen: set[Path] = set()
+    for path in root.glob("**/luci-mod-status/**/view/status/include/10_system.js"):
+        if any(part in _SKIP_DIR for part in path.relative_to(root).parts):
+            continue
+        real = path.resolve()
+        if real in seen:
+            continue
+        seen.add(real)
+
+        text = path.read_text(encoding="utf-8")
+        if LEGACY_LUCI_NEW not in text:
+            continue
+        path.write_text(text.replace(LEGACY_LUCI_NEW, LEGACY_LUCI_OLD), encoding="utf-8")
+        print("    已撤销旧版 LuCI 改动: %s" % path)
+        changed += 1
+
+    if changed:
+        _drop_luci_mod_status_artifacts(root)
+
+
 def main() -> None:
     root = Path(sys.argv[1] if len(sys.argv) > 1 else ".").resolve()
     if not (root / "rules.mk").is_file():
@@ -101,6 +157,7 @@ def main() -> None:
     print("写入作者信息 → %s" % root)
     append_banner(root)
     patch_release(root)
+    strip_legacy_luci(root)
 
 
 if __name__ == "__main__":

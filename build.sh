@@ -324,9 +324,12 @@ else
     info "跳过 feeds 更新（--no-update）"
 fi
 
-# 在默认 SSH banner 和 /etc/openwrt_release（LuCI 概览「固件版本」读这里）
-# 末尾追加作者信息。不能用 make FILES=：全量编译读的是源码树里的 files/，
-# FILES 是 ImageBuilder 的接口，写成命令行变量还会盖掉 kmod 打包用的同名变量。
+# 在默认 SSH banner 和 /usr/lib/os-release（procd 把 OPENWRT_RELEASE 报成
+# ubus system.board 的 description，LuCI 概览「固件版本」读的是它）末尾追加
+# 作者信息。不能用 make FILES=：全量编译读的是源码树里的 files/，FILES 是
+# ImageBuilder 的接口，写成命令行变量还会盖掉 kmod 打包用的同名变量。
+# 顺带撤销 2026-08-31 之前留在 feeds 里的 10_system.js 改动，否则作者信息
+# 会在管理页上出现两次。
 info "写入作者信息"
 python3 "$REPO_ROOT/scripts/inject-author-info.py" "$SRC_DIR"
 stage_done "准备"
