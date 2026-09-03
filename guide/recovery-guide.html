@@ -134,7 +134,7 @@ h1.title{margin:0 0 .7rem; font-size:clamp(1.9rem,4vw,2.6rem); font-weight:700; 
 .nw p{margin:0; color:var(--dim); font-size:.88rem; line-height:1.6}
 
 /* ---------- decision cards ---------- */
-.decide{display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; margin:2rem 0 0}
+.decide{display:grid; grid-template-columns:repeat(2,1fr); gap:1rem; margin:2rem 0 0}
 @media (max-width:760px){.decide{grid-template-columns:1fr}}
 .dcard{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.3rem 1.3rem 1.4rem;
   box-shadow:var(--shadow); display:flex; flex-direction:column; gap:.6rem; text-decoration:none; color:inherit;
@@ -306,7 +306,6 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <a class="back" href="./">← 回门户</a>
   <span class="tag">开始</span>
   <a href="#decide">先判断你在哪一步</a>
-  <a href="#whatsnew">0.1.1 新增</a>
   <a href="#files">下载固件</a>
   <a href="#prep">准备工作</a>
   <span class="tag">A · 首次迁移（需要串口）</span>
@@ -318,6 +317,9 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
   <a href="#web-use">上传并刷写</a>
   <a href="#leds">面板灯</a>
   <a href="#restore">退回原厂</a>
+  <span class="tag">C · 从 0.1.0 升级（用现在的网页）</span>
+  <a href="#whatsnew">0.1.1 有什么变化</a>
+  <a href="#upgrade">升级步骤与注意事项</a>
   <span class="tag">其他</span>
   <a href="#faq">常见问题</a>
   <a href="./recovery-guide_0_1_0.html">0.1.0 存档教程</a>
@@ -344,7 +346,7 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
     <a class="verlink" href="./recovery-guide_0_1_0.html">
       <span class="k">旧版</span>
       <span class="t">你的机器还是 Web 0.1.0？</span>
-      <span class="d">恢复页右上角写着 <b>Web 0.1.0</b>、或者引导菜单标题是 <code>( ( ( OpenWrt ) ) )</code> 的，看存档版教程 —— 那一版没有「退回原厂」，菜单也只到第 8 项。<b>不着急升</b> —— 0.1.1 刚放出来，可能还有没暴露的问题，机器现在能用就过几天再说；真要升，照本页升完回到本页即可。</span>
+      <span class="d">恢复页右上角写着 <b>Web 0.1.0</b>、或者引导菜单标题是 <code>( ( ( OpenWrt ) ) )</code> 的，看存档版教程操作日常救砖；想升到 0.1.1，看下方「路径 C」。</span>
       <span class="go">打开 0.1.0 存档教程 →</span>
     </a>
 
@@ -361,6 +363,12 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
         <span class="d">系统起不来了要救砖，或者只是想升级固件 / 引导器。全程只要浏览器，不用串口。</span>
         <span class="go">跳到「日常使用」 →</span>
       </a>
+      <a class="dcard" href="#whatsnew">
+        <span class="k">路径 C</span>
+        <span class="t">机器还是 Web 0.1.0，想升到 0.1.1</span>
+        <span class="d">升级步骤很简单，但有一件一次性的事要注意——升级前花十秒备份一次配置。</span>
+        <span class="go">看新增内容和升级步骤 →</span>
+      </a>
       <a class="dcard" href="#howto-check">
         <span class="k">不确定</span>
         <span class="t">怎么判断自己在哪一步</span>
@@ -375,32 +383,6 @@ nav.rail a.back{color:var(--accent); border-left-color:transparent; margin-botto
       <div class="dl" id="ubi-dl"><div class="err">正在读取最新 Release…</div></div>
     </div>
   </header>
-
-  <section id="whatsnew">
-    <div class="sec-head"><span class="sec-num">△</span><h2>0.1.1 比 0.1.0 多了什么</h2></div>
-    <p class="sec-sub">从 0.1.0 升上来，用现在这个 0.1.0 的恢复页就能升：<b>重新传一次 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code></b>，走「日常使用」那一节的流程即可 —— 不用串口，<b>也不要勾「先重建 UBI」</b>。已经是 0.1.1 的可以跳过本节。</p>
-
-    <div class="callout warn"><b>0.1.1 刚放出来，可能还有 BUG。</b>新增的那几项——退回原厂、自动换 MAC、菜单新增项——都只在有限几台机器上跑过，踩到问题的可能性比 0.1.0 大。<b>机器现在能正常用、也不急着用新功能的，不必现在升</b> —— 停在 0.1.0 过几天，等问题暴露得差不多了再说，看<a href="./recovery-guide_0_1_0.html">0.1.0 存档教程</a>就行。<br><br>真把机器刷砖了需要救回来的，那就别等 —— 0.1.0 的恢复页本身一直能用，不影响救砖。</div>
-
-    <div class="whatsnew">
-      <div class="nw">
-        <div class="h"><b>恢复页能退回原厂了</b><span class="tagn">新增</span></div>
-        <p>多了「退回原厂」一栏：整片写回 <code>all_flash.bin</code>，或者只写回 <code>ri</code>（出厂 MAC）、<code>bosa</code>（光模块参数）这两个卷。丢了出厂 MAC 的机器不用重刷，单独补 <code>ri</code> 就行 —— 见下方<a href="#restore">「退回原厂」</a>。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>出厂 MAC 没了会自动换一个</b><span class="tagn fix">修复</span></div>
-        <p>0.1.0 上如果 <code>ri</code> 卷是空的（点过「Reset all settings to factory defaults」或重建过 UBI），MAC 会变成 <code>ff:ff:ff:ff:ff:ff</code> —— 服务能起来，串口日志一切正常，<b>但网页就是打不开</b>。0.1.1 会认出这种情况，换成一个随机地址并在串口明确写出来。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>引导菜单多了两项</b><span class="tagn">新增</span></div>
-        <p>串口引导菜单里新增第 <b>9</b> 项「Start web recovery server」，不用再靠长按 reset 掐时机 —— <b>日常进恢复页、和首次迁移传完两个引导文件之后，两个场合都能用</b>；第 <b>a</b> 项是项目和教程地址。菜单标题也从 <code>( ( ( OpenWrt ) ) )</code> 变成了 <code>OpenWrt-Web 0.1.1</code>，一眼能看出版本。</p>
-      </div>
-      <div class="nw">
-        <div class="h"><b>串口一眼看清版本和 MAC</b><span class="tagn">新增</span></div>
-        <p>进入恢复服务时会打印版本号、本教程地址、项目地址，以及<b>当前正在用的 MAC</b>。网页打不开时先看这一行 —— 它能直接告诉你是不是上面那个 MAC 问题。</p>
-      </div>
-    </div>
-  </section>
 
   <section id="prep">
     <div class="sec-head"><span class="sec-num">00</span><h2>准备工作</h2></div>
@@ -768,11 +750,71 @@ Press Ctrl-C to abort</div>
     </ul>
   </section>
 
+  <!-- ================= PART C ================= -->
+  <section id="whatsnew">
+    <div class="sec-head"><span class="sec-num">C</span><h2>从 0.1.0 升级 · 0.1.1 有什么变化</h2></div>
+    <p class="sec-sub">已经是 0.1.1 的可以跳过本节；还没升级的看下面「升级步骤与注意事项」一节。</p>
+
+    <div class="whatsnew">
+      <div class="nw">
+        <div class="h"><b>恢复页能退回原厂了</b><span class="tagn">新增</span></div>
+        <p>多了「退回原厂」一栏：整片写回 <code>all_flash.bin</code>，或者只写回 <code>ri</code>（出厂 MAC）、<code>bosa</code>（光模块参数）这两个卷。丢了出厂 MAC 的机器不用重刷，单独补 <code>ri</code> 就行 —— 见上方<a href="#restore">「退回原厂」</a>。</p>
+      </div>
+      <div class="nw">
+        <div class="h"><b>出厂 MAC 没了会自动换一个</b><span class="tagn fix">修复</span></div>
+        <p>0.1.0 上如果 <code>ri</code> 卷是空的（点过「Reset all settings to factory defaults」或重建过 UBI），MAC 会变成 <code>ff:ff:ff:ff:ff:ff</code> —— 服务能起来，串口日志一切正常，<b>但网页就是打不开</b>。0.1.1 会认出这种情况，换成一个随机地址并在串口明确写出来。</p>
+      </div>
+      <div class="nw">
+        <div class="h"><b>引导菜单多了两项</b><span class="tagn">新增</span></div>
+        <p>串口引导菜单里新增第 <b>9</b> 项「Start web recovery server」，不用再靠长按 reset 掐时机 —— <b>日常进恢复页、和首次迁移传完两个引导文件之后，两个场合都能用</b>；第 <b>a</b> 项是项目和教程地址。菜单标题也从 <code>( ( ( OpenWrt ) ) )</code> 变成了 <code>OpenWrt-Web 0.1.1</code>，一眼能看出版本。</p>
+      </div>
+      <div class="nw">
+        <div class="h"><b>串口一眼看清版本和 MAC</b><span class="tagn">新增</span></div>
+        <p>进入恢复服务时会打印版本号、本教程地址、项目地址，以及<b>当前正在用的 MAC</b>。网页打不开时先看这一行 —— 它能直接告诉你是不是上面那个 MAC 问题。</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="upgrade">
+    <div class="sec-head"><span class="sec-num">C</span><h2>从 0.1.0 升级 · 升级步骤与注意事项</h2></div>
+    <p class="sec-sub">升级步骤很简单，用现在这个 0.1.0 的恢复页就能做：展开「引导程序」，重传 BL2 和 U-Boot 这两个文件，固件那格留空，<b>不要勾「先重建 UBI」</b>。真正要注意的只有一件事，而且只在这一次升级里发生。</p>
+
+    <div class="callout warn"><b>这一下写入用的还是当前正在跑的旧代码。</b>早期版本刷 U-Boot 时会顺带清空 <code>rootfs_data</code>——存着你全部 LuCI 设置的那个卷，固件本身不受影响，但设置会回到出厂状态。这个问题已经在新版里修好了，<b>之后的每一次更新都不会再触发</b>；但升级到修复版的这一下，走的还是旧代码，仍然可能清一次。</div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="rule"><div class="num">1</div><div class="line"></div></div>
+        <div class="body">
+          <h3>升级前，先在 LuCI 备份一次配置</h3>
+          <p>系统 → 备份/升级 → 生成备份文件。花十秒，万一这一下真清空了，能直接把备份传回去，不用一项一项重新设。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rule"><div class="num">2</div><div class="line"></div></div>
+        <div class="body">
+          <h3>照「日常使用」的流程刷，只传引导文件</h3>
+          <p>展开「引导程序」，BL2 选 <code>…-preloader.bin</code>，U-Boot 选 <code>…-bl31-uboot.fip</code>，固件那一格留空，「先重建 UBI」不要勾——勾了反而会把出厂 MAC 也一起清掉，升级用不着。</p>
+          <div class="mock-wrap">
+            <div class="mock"><div class="mock-bar"><i></i><i></i><i></i><span class="mock-url">192.168.1.1</span></div><iframe title="网页救砖界面 · 升级引导文件" data-state="STATE_UPGRADE"></iframe></div>
+          </div>
+          <p class="mock-cap">▲ 展开「引导程序」后的样子，BL2 和 U-Boot 已选好，固件留空，「先重建 UBI」没勾</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="rule"><div class="num">3</div><div class="line"></div></div>
+        <div class="body">
+          <h3>重启后如果设置没了，把刚才的备份传回去</h3>
+          <p>系统 → 备份/升级 → 上传备份文件并还原。之后再刷什么都不会再清了——这个坑只在「从旧代码升级到修复版」这一次存在，后续的固件、引导器更新都很安全。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <section id="faq">
     <div class="sec-head"><span class="sec-num">?</span><h2>常见问题</h2></div>
 
     <details class="faq"><summary>从 0.1.0 升到 0.1.1，要传什么？要勾「先重建 UBI」吗？</summary>
-      <div class="a"><b>把 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code> 这两个引导文件重新传一次，不要勾「先重建 UBI」。</b>用现在这个 0.1.0 的恢复页就能升：进恢复页 → 展开「引导程序」 → BL2 那一格选 preloader、U-Boot 那一格选 fip → 上传并刷写。固件那一格可以留空，日常固件跟这次升级无关。<br><br>重启之后引导菜单标题就会变成 <code>OpenWrt-Web 0.1.1</code>，菜单也多出第 9、第 10 项。<b>「先重建 UBI」千万别勾</b> —— 它会把出厂 MAC 一起擦掉，升级根本用不着；BL2 是直接写 <code>bl2</code> 分区的，U-Boot(fip) 只替换 UBI 里的 <code>fip</code> 卷，两者都不会碰到你的固件和设置。</div>
+      <div class="a"><b>把 <code>…-preloader.bin</code> 和 <code>…-bl31-uboot.fip</code> 这两个引导文件重新传一次，不要勾「先重建 UBI」。</b>用现在这个 0.1.0 的恢复页就能升：进恢复页 → 展开「引导程序」 → BL2 那一格选 preloader、U-Boot 那一格选 fip → 上传并刷写。固件那一格可以留空，日常固件跟这次升级无关。<br><br>重启之后引导菜单标题就会变成 <code>OpenWrt-Web 0.1.1</code>，菜单也多出第 9、第 10 项。<b>「先重建 UBI」千万别勾</b> —— 它会把出厂 MAC 一起擦掉，升级根本用不着。<b>升级前建议先在 LuCI 备份一次配置</b> —— 这一次写入 fip 用的是当前跑着的旧代码，可能会顺带清空设置，详见上方<a href="#upgrade">「0.1.0 升级 0.1.1 注意事项」</a>；BL2 是直接写 <code>bl2</code> 分区的，不受影响。</div>
     </details>
 
     <details class="faq"><summary>升上来之后，引导菜单标题还是老的 / 新菜单项没出现？</summary>
@@ -910,12 +952,12 @@ Press Ctrl-C to abort</div>
 
   // o.boot / o.stock = 哪一块展开；o.picked = 三个文件都选好了；o.rebuild = 勾了重建 UBI
   function page(o){
-    function nm(s){ return o.picked ? "immortalwrt-…-ubi-" + s + " ✓" : "…-" + s; }
+    function nm(s, picked){ return (picked === undefined ? o.picked : picked) ? "immortalwrt-…-ubi-" + s + " ✓" : "…-" + s; }
     return "<body>" + TOP + "<div class=c>"
       + fld("固件", nm("squashfs-sysupgrade.itb"))
       + "<details" + (o.boot ? " open" : "") + "><summary>引导程序（仅首次迁移需要）</summary>"
-      +   fld("BL2", nm("preloader.bin"))
-      +   fld("U-Boot", nm("bl31-uboot.fip"))
+      +   fld("BL2", nm("preloader.bin", o.bootPicked || o.picked))
+      +   fld("U-Boot", nm("bl31-uboot.fip", o.bootPicked || o.picked))
       +   "<div class=warn><label><input type=checkbox" + (o.rebuild ? " checked" : "") + ">"
       +   " <b>先重建 UBI</b> —— 擦掉全部卷，包括出厂 MAC、U-Boot 环境与所有设置。"
       +   "只有从 tcboot / 原厂布局首次迁移时才需要。</label></div>"
@@ -929,6 +971,7 @@ Press Ctrl-C to abort</div>
   var IDLE_BODY    = page({});
   var MIGRATE_BODY = page({boot:1, picked:1, rebuild:1});
   var STOCK_BODY   = page({stock:1});
+  var UPGRADE_BODY = page({boot:1, bootPicked:1});
 
   // 上传中：表单收起来，只剩固件那一行 + 进度条
   var PROGRESS_BODY = "<body>" + TOP + "<div class=c>"
@@ -940,7 +983,7 @@ Press Ctrl-C to abort</div>
   var CONFIRM_BODY = "<body style=\"padding:0\"><div class=mask data-on style=\"position:static;padding:2.25rem 1rem\"><div class=dlg><h2>确认写入</h2><div class=list><div class=sr><span class=k>固件</span><span class=v>18.9 MiB</span></div><div class=sr><span class=k>BL2</span><span class=v>109.5 KiB</span></div><div class=sr><span class=k>U-Boot</span><span class=v>312.8 KiB</span></div></div><div class=wr>重建 UBI 会擦掉出厂 MAC、U-Boot 环境与全部设置</div><div class=btns><button class=no>取消</button><button class=danger>仍要写入</button></div></div></div></body>";
 
 
-  var map = {STATE_IDLE:IDLE_BODY, STATE_MIGRATE_FORM:MIGRATE_BODY, STATE_CONFIRM:CONFIRM_BODY, STATE_PROGRESS:PROGRESS_BODY, STATE_STOCK:STOCK_BODY};
+  var map = {STATE_IDLE:IDLE_BODY, STATE_MIGRATE_FORM:MIGRATE_BODY, STATE_CONFIRM:CONFIRM_BODY, STATE_PROGRESS:PROGRESS_BODY, STATE_STOCK:STOCK_BODY, STATE_UPGRADE:UPGRADE_BODY};
   // 占位用 data-state 而不是 srcdoc：本页 2 MB 多（大头是主板实拍），
   // 脚本在最末尾，写在 srcdoc 里的 STATE_XXX 会在整个加载期间当正文显示出来。
   var frames = [].slice.call(document.querySelectorAll('iframe[data-state]'));
