@@ -2,7 +2,7 @@ name: XG-040G-MD
 
 # 让 Actions 列表直接显示本次选了什么，省得点进去翻日志里的 env 块。
 # 必须写成一行：折叠标量会把缩进更深的续行当字面量，在 ${{ }} 中间插进换行。
-run-name: "XG-040G-MD · ${{ inputs.repo_branch }} · ${{ inputs.dram_size == 'auto' && '自适应内存' || inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}"
+run-name: "${{ inputs.device == 'xg-040g-mf' && 'XG-040G-MF' || 'XG-040G-MD' }} · ${{ inputs.repo_branch }} · ${{ inputs.dram_size == 'auto' && '自适应内存' || inputs.dram_size }} · ${{ inputs.device_variant }}${{ inputs.extra_packages != '' && ' · 有附加包' || '' }}${{ inputs.pkg_versions != '' && ' · 指定版本' || '' }}"
 
 on:
   workflow_dispatch:
@@ -17,6 +17,14 @@ on:
           - master-airoha
           - openwrt-25.12-XG-040G-MD
           - xpon-test
+      device:
+        description: '机型（仅 master-airoha 支持多机型；其余分支忽略此项，固定 XG-040G-MD）'
+        required: true
+        default: 'xg-040g-md'
+        type: choice
+        options:
+          - xg-040g-md
+          - xg-040g-mf
       device_variant:
         description: '设备变体（仅 master 有效；ubi 推荐，tcboot 刷机不再维护，25.12 忽略此项）'
         required: true
@@ -59,7 +67,9 @@ env:
   PKG_VERSIONS: ${{ github.event.inputs.pkg_versions }}
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
   # REPO_BRANCH 将由 workflow_dispatch 输入动态设置
+  DEVICE: ${{ github.event.inputs.device }}
   DEVICE_TARGET: airoha
+  # 默认值；master-airoha 上由 Generate Variables 按机型覆写（MF 是 an7583）
   DEVICE_SUBTARGET: an7581
   # 默认值；实际使用哪份由 Generate Variables 按分支覆写
   CONFIG_FILE: config/xg-040g-md.config
@@ -202,11 +212,23 @@ jobs:
         #   master 线 上游原生，内核 6.18，三个变体由 device_variant 输入选择
         case "$REPO_BRANCH" in
           master-airoha)
-            # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock
-            CONFIG_FILE=config/xg-040g-md-master.config
+            # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock；
+            # 且这条线同时承载多机型 —— MD 是 an7581，MF 是 an7583。
+            case "$DEVICE" in
+              xg-040g-mf)
+                DEVICE_SUBTARGET=an7583
+                MODEL_TAG=XG-040G-MF
+                CONFIG_FILE=config/xg-040g-mf-master.config
+                ;;
+              *)
+                DEVICE_SUBTARGET=an7581
+                MODEL_TAG=XG-040G-MD
+                CONFIG_FILE=config/xg-040g-md-master.config
+                ;;
+            esac
             case "$DEVICE_VARIANT" in
-              stock)  DEVICE_SYMBOL=nokia_xg-040g-md ;;
-              ubi)    DEVICE_SYMBOL=nokia_xg-040g-md-ubi ;;
+              stock)  DEVICE_SYMBOL=nokia_${DEVICE} ;;
+              ubi)    DEVICE_SYMBOL=nokia_${DEVICE}-ubi ;;
               tcboot) echo "::error::master-airoha 已移除 tcboot 变体，请选 ubi 或 stock"; exit 1 ;;
               *)      echo "::error::不支持的 device_variant=$DEVICE_VARIANT"; exit 1 ;;
             esac
@@ -214,6 +236,11 @@ jobs:
             VARIANT_LABEL="$DEVICE_VARIANT"
             ;;
           master-XG-040G-MD*|xpon-test)
+            DEVICE_SUBTARGET=an7581
+            MODEL_TAG=XG-040G-MD
+            if [ "$DEVICE" != "xg-040g-md" ]; then
+              echo "::warning::$REPO_BRANCH 只支持 XG-040G-MD，已忽略 device=$DEVICE"
+            fi
             CONFIG_FILE=config/xg-040g-md-master.config
             case "$DEVICE_VARIANT" in
               tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
@@ -225,6 +252,11 @@ jobs:
             VARIANT_LABEL="$DEVICE_VARIANT"
             ;;
           *)
+            DEVICE_SUBTARGET=an7581
+            MODEL_TAG=XG-040G-MD
+            if [ "$DEVICE" != "xg-040g-md" ]; then
+              echo "::warning::25.12 分支只支持 XG-040G-MD，已忽略 device=$DEVICE"
+            fi
             CONFIG_FILE=config/xg-040g-md.config
             DEVICE_SYMBOL=bell_xg-040g-md
             FLAVOR=""
@@ -261,6 +293,17 @@ jobs:
               echo "- 保留原厂 \`nsb_2\` 备份 bank，是唯一可刷回原厂固件的变体"
               echo "- 刷机用附件 \`factory-kernel.bin\` + \`factory-rootfs.bin\`"
               ;;
+            nokia_xg-040g-mf)
+              echo "- **保留原厂引导与原厂分区表**"
+              echo "- 刷机用附件 \`factory-kernel.bin\` + \`factory-rootfs.bin\`"
+              ;;
+            nokia_xg-040g-mf-ubi)
+              echo "- OpenWrt U-Boot 布局：bl2 128K + ubi 255.875 MB（与 MD 共用 an758x 分区 dtsi）"
+              echo "- **会替换引导程序**，附件 \`preloader.bin\` 与 \`bl31-uboot.fip\` 需经 USB-TTL 刷入"
+              echo "- 附件 \`*-recovery.itb\` 为 initramfs 救援镜像"
+              echo "- MAC 取自 ubi 中的 \`ri\` 卷（与 MD 同，ethaddr_factory 读 ri +0x3e）"
+              echo "- 网页救砖只能按住 reset 上电或引导失败时进入，引导菜单里没有入口"
+              ;;
             nokia_xg-040g-md-ubi)
               echo "- OpenWrt U-Boot 布局：bl2 128K + ubi 255.875 MB"
               echo "- **会替换引导程序**，附件 \`preloader.bin\` 与 \`bl31-uboot.fip\` 需经 USB-TTL 刷入"
@@ -273,8 +316,9 @@ jobs:
         echo "SOURCE_REPO=$SOURCE_REPO" >> $GITHUB_ENV
         echo "DEVICE_TARGET=$DEVICE_TARGET" >> $GITHUB_ENV
         echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
+        echo "MODEL_TAG=$MODEL_TAG" >> $GITHUB_ENV
         # 25.12 线只有一个设备，FLAVOR 为空则不插入该段
-        echo "RELEASE_TAG=XG-040G-MD${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
+        echo "RELEASE_TAG=${MODEL_TAG}${FLAVOR:+-$FLAVOR}-$DRAM_SIZE-$(date +"%Y%m%d")-${{ github.run_number }}" >> $GITHUB_ENV
         # 实验分支仍发 Release 方便下载，但标成 pre-release，避免盖掉
         # GitHub Latest；救砖指南也只认 master-XG-040G-MD 的 ubi-auto。
         case "$REPO_BRANCH" in
@@ -355,11 +399,12 @@ jobs:
         # 用 cp 而非 mv：保留带注释的原始配置，供后续生成自定义软件包清单
         [ -e $CONFIG_FILE ] && cp $CONFIG_FILE $OPENWRT_PATH/.config
         cd $OPENWRT_PATH
-        # 按选定变体改写设备符号：先清掉配置里所有 an7581 设备行，再插入选中的那个
-        sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-        sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-        sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
-        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+        # 按选定变体改写设备符号：先清掉配置里该 subtarget 的所有设备行，再插入选中的那个
+        # subtarget 随机型变（MD 是 an7581，MF 是 an7583），不能写死
+        sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+        sed -i "/^# CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+        sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}=y/a CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config
+        grep -q "^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config \
           || { echo "::error::设备符号写入失败: $DEVICE_SYMBOL"; exit 1; }
         # 附加软件包：由选包页生成、经 workflow_dispatch 输入的一串包名
         #   pkg  → 编入固件      -pkg → 从基础配置中剔除
@@ -406,7 +451,7 @@ jobs:
         PY
         . "$RUNNER_TEMP/extra.sh"
         make defconfig
-        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+        grep -q "^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config \
           || { echo "::error::defconfig 后设备符号丢失，$DEVICE_SYMBOL 在该源码分支中可能不存在"; exit 1; }
         echo "已选定设备: $DEVICE_SYMBOL"
         grep "CONFIG_PACKAGE_luci-app-airoha-npu" .config || echo "WARNING: option missing!"
@@ -662,7 +707,7 @@ jobs:
         OUT="$FIRMWARE_PATH/custom-packages.txt"
         [ -e "$SRC" ] || { echo "::error::未找到配置文件 $SRC"; exit 1; }
         {
-          echo "XG-040G-MD 自定义软件包清单"
+          echo "$MODEL_TAG 自定义软件包清单"
           echo "=================================================================="
           echo "固件版本 : $RELEASE_TAG"
           echo "编译分支 : $REPO_BRANCH"
