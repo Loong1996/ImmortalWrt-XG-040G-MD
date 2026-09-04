@@ -46,6 +46,11 @@ on:
         required: false
         default: ''
         type: string
+      run_refresh_check:
+        description: '补丁偏移检查（仅 master-airoha；会 clean 并重新 prepare 内核与 uboot，拖长本次编译且让缓存失效，平时不用勾）'
+        required: false
+        default: false
+        type: boolean
 
 env:
   DRAM_SIZE: ${{ github.event.inputs.dram_size }}
@@ -558,28 +563,35 @@ jobs:
         echo "DATE=$(date +"%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV
         echo "FILE_DATE=$(date +"%Y.%m.%d")" >> $GITHUB_ENV
 
-    - name: Drift Checks(漂移检查)
+    - name: DTB Baseline Check(设备树基准比对)
       # 只对整理后的 master-airoha 线跑；老分支不受影响。
-      # 刻意不 fail 整个流程 —— 这两项是「提醒去看」，不是「构建坏了」。
-      # 结果以 warning 注解出现在 Summary 里，dtb 基准变化会带 diff。
+      # 只读 build_dir，不动源码树，因此每次编译都跑。
+      # 刻意不 fail 整个流程 —— 这是「提醒去看」，不是「构建坏了」。
       if: steps.compile.outputs.status == 'success' && env.REPO_BRANCH == 'master-airoha'
       continue-on-error: true
       run: |
         sudo apt-get install -y device-tree-compiler >/dev/null 2>&1 || true
-
-        # ① dtb 与 golden 基准逐字比：抓「dts 编得过、刷进去没网、日志无声」
-        #    那一类（25.12 线的 pcs -> pcs-handle 就是这么漏过去的）
+        # 抓「dts 编得过、刷进去没网、日志无声」那一类
+        #（25.12 线的 pcs -> pcs-handle 就是这么漏过去的）
         if ! bash "$GITHUB_WORKSPACE/scripts/check-drift.sh" dtb -o "$OPENWRT_PATH" > dtb.log 2>&1; then
           echo "::warning::dtb 与 golden 基准不一致，详见下方"
         fi
         cat dtb.log
-        # golden/ 里新写入的基准要带出来给人 review 后提交进仓库
-        if ! git -C "$GITHUB_WORKSPACE" diff --quiet -- golden 2>/dev/null; then
-          echo "::notice::golden/ 有更新，已作为构建产物上传，review 后提交"
-        fi
 
-        # ② quilt refresh：OpenWrt 打补丁用 patch -f -p1，offset 与 fuzz<=2
-        #    是静默成功的。refresh 会把补丁按实际落位重写，偏了就现形。
+    - name: Patch Fuzz Check(补丁偏移检查)
+      # 默认关闭：这一项要 clean + 重新 prepare uboot-airoha 与内核，会改动源码树，
+      # 也会让 cachewrtbuild 缓存下来的已 prepare 状态失效，下次编译得重做一遍。
+      # 需要时在 Run workflow 里勾上；本地随时可跑 ./scripts/check-drift.sh refresh。
+      #
+      # 必须放在 DTB 检查之后 —— target/linux/clean 会把 build_dir 里的 dtb 删掉。
+      if: |
+        steps.compile.outputs.status == 'success'
+        && env.REPO_BRANCH == 'master-airoha'
+        && github.event.inputs.run_refresh_check == 'true'
+      continue-on-error: true
+      run: |
+        # OpenWrt 打补丁走 patch -f -p1：整块 reject 才让构建失败，offset 与
+        # fuzz<=2 是静默成功的。quilt refresh 按实际落位重写补丁，偏了就现形。
         if ! bash "$GITHUB_WORKSPACE/scripts/check-drift.sh" refresh -o "$OPENWRT_PATH" > refresh.log 2>&1; then
           echo "::warning::有补丁被 quilt refresh 改写（打上去时有 offset/fuzz），详见下方"
         fi
@@ -591,6 +603,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: drift-${{ github.run_number }}
+        # golden/ 首次是脚本新写进去的基准，review 后提交进仓库
         path: |
           dtb.log
           refresh.log

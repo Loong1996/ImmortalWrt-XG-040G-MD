@@ -29,7 +29,7 @@
 | --- | --- | --- | --- |
 | `watch` | 上游改动了「我依赖但没修改」的路径 | 每周自动 + rebase 前 | 否 |
 | `versions` | U-Boot / 内核大版本变了 | 同上 | 否（要源码树） |
-| `refresh` | 补丁打上去有 offset / fuzz | 每次 CI 编译 | 是 |
+| `refresh` | 补丁打上去有 offset / fuzz | CI 里默认**关闭**，需手动勾 | 是 |
 | `dtb` | 最终设备树与基准逐字不符 | 每次 CI 编译 | 是 |
 
 `refresh` 那一项值得多说一句：OpenWrt 打包内补丁走 `scripts/patch-kernel.sh` →
@@ -39,6 +39,13 @@
 
 `dtb` 那一项是唯一能抓 25.12 那类事故的：把最终产物摊平了看，属性改名、include
 结构变化、被 `/delete-property/` 掉的东西，全在这一层现形。
+
+`refresh` 在 CI 里默认不跑，因为它必须先 `clean` 再用 `QUILT=1` 重新 prepare 内核和
+uboot-airoha（`quilt-check` 要求源码目录是用 quilt 解包的，而正常编译不走 quilt），
+这会拖长本次编译，也让 `cachewrtbuild` 缓存下来的已 prepare 状态失效。需要时在
+`Run workflow` 里勾上「补丁偏移检查」，或者本地随时跑。
+
+也因此它必须排在 `dtb` 之后 —— `target/linux/clean` 会把 `build_dir` 里的 dtb 删掉。
 
 ## 日常：每周报告
 
@@ -99,7 +106,7 @@ git rebase upstream/master
 1. **rebase 报的冲突照常解决**——那是「上游改了 ∩ 我也改了」，只有 6 个文件会落在
    这一类（见 [源码分支](branches.md)）
 2. **看这周的漂移报告**——那是 rebase 不会告诉你的部分，逐条判断有没有影响
-3. **编译**，看 CI 的 `refresh` 和 `dtb` 两项警告
+3. **编译**，看 CI 的 `dtb` 警告；这一次值得把「补丁偏移检查」也勾上
 4. **实机刷一遍**。前面三步只能保证「上游动了什么你都知道」，不能保证刷上去有网。
    这一步任何方案都省不掉
 5. 都过了，再手工更新 `upstream.lock` 的 `UPSTREAM_COMMIT` 与 `UPSTREAM_DATE`，

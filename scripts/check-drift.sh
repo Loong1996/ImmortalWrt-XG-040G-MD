@@ -194,11 +194,19 @@ cmd_refresh() {
     command -v quilt >/dev/null || warn "宿主没有 quilt，OpenWrt 会用自带的"
 
     local rc=0
+    # clean 是必须的：quilt-check 要求源码目录是用 QUILT=1 解包的，而正常编译
+    # 不走 quilt。不先 clean 就会得到
+    #   "The source directory was not unpacked using quilt. Please rebuild with QUILT=1"
+    # 另外 QUILT=1 必须写在命令行 —— quilt.mk 里是 QUILT?=，只有命令行变量能压过它
+    # （它对 MAKECMDGOALS 的自动 override 只认裸的 refresh，不认 package/xxx/refresh）。
+    #
+    # 代价：内核与 uboot 都要重新解包打补丁，几分钟；且会让已 prepare 的状态失效。
+    warn "本检查会 clean 并重新 prepare 内核与 uboot-airoha，源码树状态会变"
     info "刷新 uboot-airoha 补丁"
     ( cd "$SRC_DIR" && make package/boot/uboot-airoha/{clean,refresh} QUILT=1 V=s ) \
         || { warn "uboot-airoha refresh 失败"; rc=1; }
     info "刷新内核补丁"
-    ( cd "$SRC_DIR" && make target/linux/refresh QUILT=1 V=s ) \
+    ( cd "$SRC_DIR" && make target/linux/{clean,refresh} QUILT=1 V=s ) \
         || { warn "target/linux refresh 失败"; rc=1; }
 
     info "比对被 refresh 改写的补丁"
