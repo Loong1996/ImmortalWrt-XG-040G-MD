@@ -210,6 +210,8 @@ jobs:
               tcboot) echo "::error::master-airoha 已移除 tcboot 变体，请选 ubi 或 stock"; exit 1 ;;
               *)      echo "::error::不支持的 device_variant=$DEVICE_VARIANT"; exit 1 ;;
             esac
+            FLAVOR="$DEVICE_VARIANT"
+            VARIANT_LABEL="$DEVICE_VARIANT"
             ;;
           master-XG-040G-MD*|xpon-test)
             CONFIG_FILE=config/xg-040g-md-master.config
@@ -291,7 +293,8 @@ jobs:
           echo 'DRAM_NOTE<<DRAMNOTEEOF'
           if [ "$DRAM_SIZE" = "auto" ]; then
             echo "- **容量自适应**：U-Boot 探测出实际颗粒后 fixup 进 DTB，\`usable-memory-range\` 放开到 2G 不裁剪"
-            echo "- \`tcboot\` / \`ubi\` 变体都会做这个探测 —— **512M / 1G / 2G 机器可刷同一份固件**"
+            # 不点名 tcboot：它只在老的 master-XG-040G-MD 线上还有，这段文案是两条线共用的
+            echo "- 除 \`stock\` 外的变体都会做这个探测 —— **512M / 1G / 2G 机器可刷同一份固件**"
             echo "- \`stock\` 变体用原厂引导程序，是否 fixup 未经验证；若用 stock 且换过颗粒，请改选对应容量重新编译"
           else
             echo "- 本固件把系统**上限**限制在 **$DRAM_SIZE**（改的是 \`linux,usable-memory-range\`）"
@@ -706,7 +709,7 @@ jobs:
           echo "* Passwall 与 OpenClash 不要同时启用，两者都会接管 nftables 规则链与 dnsmasq 配置。"
           echo "* dnsmasq / SmartDNS / AdGuardHome 默认均监听 53 端口，刷机后需手动规划端口分配。"
           if [ "$DRAM_SIZE" = "auto" ]; then
-            echo "* 本固件内存容量自适应，由引导程序探测上报；tcboot / ubi 变体可通刷 512M / 1G / 2G 机器。"
+            echo "* 本固件内存容量自适应，由引导程序探测上报；除 stock 外的变体可通刷 512M / 1G / 2G 机器。"
           else
             echo "* 本固件的 DTS 已按 $DRAM_SIZE 内存颗粒写死，请勿刷入更小容量颗粒的机器。"
           fi
