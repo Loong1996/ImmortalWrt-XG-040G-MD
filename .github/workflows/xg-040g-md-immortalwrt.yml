@@ -798,11 +798,11 @@ jobs:
         prerelease: ${{ env.IS_PRERELEASE == 'true' }}
         artifacts: ${{ env.FIRMWARE_PATH }}/*
         body: |
-          **This is OpenWrt Firmware for XG-040G-MD（内存 ${{ env.DRAM_LABEL }} · ${{ env.VARIANT_LABEL }} 变体）**
+          **This is OpenWrt Firmware for ${{ env.MODEL_TAG }}（内存 ${{ env.DRAM_LABEL }} · ${{ env.VARIANT_LABEL }} 变体）**
           ### 🧠 内存容量
           ${{ env.DRAM_NOTE }}
-          ### 📒 固件信息(XG-040G-MD)
-          - 这是 XG-040G-MD 的专属构建
+          ### 📒 固件信息(${{ env.MODEL_TAG }})
+          - 这是 ${{ env.MODEL_TAG }} 的专属构建
           - 🧠 内存容量：${{ env.DRAM_LABEL }}
           - 🧩 编译变体：**${{ env.VARIANT_LABEL }}**
           - 📐 设备定义：`${{ env.DEVICE_SYMBOL }}`
