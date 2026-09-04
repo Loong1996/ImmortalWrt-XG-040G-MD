@@ -68,9 +68,11 @@ usage() {
 用法: ./build.sh [选项]
 
   -b, --branch <分支>     源码分支，默认 master-XG-040G-MD
-                          可选 openwrt-25.12-XG-040G-MD 等
+                          可选 master-airoha、openwrt-25.12-XG-040G-MD 等
+                          master-airoha 是整理过的 master 线，无 tcboot 变体
   -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 ubi
-                          （25.12 线只有一个设备，此项被忽略）
+                          （25.12 线只有一个设备，此项被忽略；
+                            master-airoha 无 tcboot）
   -d, --dram <容量>       内存容量 auto|512M|1G|2G，默认 auto（自适应）
   -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除
   -j, --jobs <n>          并行度，默认按 CPU 与内存自动取较小值
@@ -161,6 +163,16 @@ fi
 
 # 与 workflow「生成变量」一步的 case 完全一致，含 master 线的前缀匹配
 case "$BRANCH" in
+    master-airoha)
+        # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock
+        CONFIG_FILE="config/xg-040g-md-master.config"
+        case "$VARIANT" in
+            stock)  DEVICE_SYMBOL="nokia_xg-040g-md" ;;
+            ubi)    DEVICE_SYMBOL="nokia_xg-040g-md-ubi" ;;
+            tcboot) die "master-airoha 已移除 tcboot 变体，请用 ubi 或 stock" ;;
+            *)      die "不支持的变体: $VARIANT（可选 stock|ubi）" ;;
+        esac
+        ;;
     master-XG-040G-MD*|xpon-test)
         CONFIG_FILE="config/xg-040g-md-master.config"
         case "$VARIANT" in
@@ -272,6 +284,10 @@ fi
 # U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，ubi 引导
 # 还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb / 8211f2d7 移植到
 # uboot-airoha）；SkyHigh 走另一张表，这两份不会动到它。
+#
+# master-airoha 刻意不在此列：这两个补丁已收编进该分支的源码树
+# （package/boot/uboot-airoha/patches/120、121），再拷一次是多余的。
+# patch/uboot-airoha/ 只为下面这几个老分支保留。
 case "$BRANCH" in
     master-XG-040G-MD*|xpon-test)
         UBOOT_PATCHES="$SRC_DIR/package/boot/uboot-airoha/patches"
@@ -315,6 +331,17 @@ PY
 fi
 
 # ---------------------------------------------------------------- feeds
+
+# 本仓库 packages/ 下的包（目前只有 luci-app-airoha-npu）挂成一个 src-link feed，
+# 不进源码仓库。src-link 建的是符号链接不复制，所以改完包直接重编即可。
+# feeds.conf 优先于 feeds.conf.default，没有就先复制一份再追加。
+if [ ! -f feeds.conf ]; then
+    cp feeds.conf.default feeds.conf
+fi
+if ! grep -q "^src-link loong " feeds.conf; then
+    info "挂载本地 feed loong -> $REPO_ROOT/packages"
+    echo "src-link loong $REPO_ROOT/packages" >> feeds.conf
+fi
 
 if [ "$DO_UPDATE" = "1" ] || [ ! -d package/feeds ]; then
     info "安装 feeds"

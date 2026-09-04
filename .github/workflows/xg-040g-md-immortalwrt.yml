@@ -14,6 +14,7 @@ on:
         type: choice
         options:
           - master-XG-040G-MD
+          - master-airoha
           - openwrt-25.12-XG-040G-MD
           - xpon-test
       device_variant:
@@ -127,6 +128,10 @@ jobs:
         # U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，
         # ubi 引导还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb /
         # 8211f2d7 移植）；SkyHigh 走另一张表，这两份不会动到它。
+        #
+        # master-airoha 刻意不在 if 条件里：这两个补丁已收编进该分支的源码树
+        # （package/boot/uboot-airoha/patches/120、121）。patch/uboot-airoha/
+        # 只为上面这几个老分支保留。
         cp -f "$GITHUB_WORKSPACE"/patch/uboot-airoha/*.patch \
           "$OPENWRT_PATH/package/boot/uboot-airoha/patches/"
 
@@ -191,6 +196,16 @@ jobs:
         #   25.12 线  自制 bell_xg-040g-md，内核 6.12，只有这一个设备
         #   master 线 上游原生，内核 6.18，三个变体由 device_variant 输入选择
         case "$REPO_BRANCH" in
+          master-airoha)
+            # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock
+            CONFIG_FILE=config/xg-040g-md-master.config
+            case "$DEVICE_VARIANT" in
+              stock)  DEVICE_SYMBOL=nokia_xg-040g-md ;;
+              ubi)    DEVICE_SYMBOL=nokia_xg-040g-md-ubi ;;
+              tcboot) echo "::error::master-airoha 已移除 tcboot 变体，请选 ubi 或 stock"; exit 1 ;;
+              *)      echo "::error::不支持的 device_variant=$DEVICE_VARIANT"; exit 1 ;;
+            esac
+            ;;
           master-XG-040G-MD*|xpon-test)
             CONFIG_FILE=config/xg-040g-md-master.config
             case "$DEVICE_VARIANT" in
@@ -292,6 +307,11 @@ jobs:
     - name: Install Feeds(安装feeds)
       run: |
         cd $OPENWRT_PATH
+        # 本仓库 packages/ 下的包（luci-app-airoha-npu）挂成 src-link feed，
+        # 不进源码仓库。feeds.conf 优先于 feeds.conf.default。
+        [ -f feeds.conf ] || cp feeds.conf.default feeds.conf
+        grep -q "^src-link loong " feeds.conf || \
+          echo "src-link loong $GITHUB_WORKSPACE/packages" >> feeds.conf
         ./scripts/feeds update -a
         ./scripts/feeds install -a
 
@@ -537,6 +557,45 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
         echo "DATE=$(date +"%Y-%m-%d %H:%M:%S")" >> $GITHUB_ENV
         echo "FILE_DATE=$(date +"%Y.%m.%d")" >> $GITHUB_ENV
+
+    - name: Drift Checks(漂移检查)
+      # 只对整理后的 master-airoha 线跑；老分支不受影响。
+      # 刻意不 fail 整个流程 —— 这两项是「提醒去看」，不是「构建坏了」。
+      # 结果以 warning 注解出现在 Summary 里，dtb 基准变化会带 diff。
+      if: steps.compile.outputs.status == 'success' && env.REPO_BRANCH == 'master-airoha'
+      continue-on-error: true
+      run: |
+        sudo apt-get install -y device-tree-compiler >/dev/null 2>&1 || true
+
+        # ① dtb 与 golden 基准逐字比：抓「dts 编得过、刷进去没网、日志无声」
+        #    那一类（25.12 线的 pcs -> pcs-handle 就是这么漏过去的）
+        if ! bash "$GITHUB_WORKSPACE/scripts/check-drift.sh" dtb -o "$OPENWRT_PATH" > dtb.log 2>&1; then
+          echo "::warning::dtb 与 golden 基准不一致，详见下方"
+        fi
+        cat dtb.log
+        # golden/ 里新写入的基准要带出来给人 review 后提交进仓库
+        if ! git -C "$GITHUB_WORKSPACE" diff --quiet -- golden 2>/dev/null; then
+          echo "::notice::golden/ 有更新，已作为构建产物上传，review 后提交"
+        fi
+
+        # ② quilt refresh：OpenWrt 打补丁用 patch -f -p1，offset 与 fuzz<=2
+        #    是静默成功的。refresh 会把补丁按实际落位重写，偏了就现形。
+        if ! bash "$GITHUB_WORKSPACE/scripts/check-drift.sh" refresh -o "$OPENWRT_PATH" > refresh.log 2>&1; then
+          echo "::warning::有补丁被 quilt refresh 改写（打上去时有 offset/fuzz），详见下方"
+        fi
+        tail -100 refresh.log
+
+    - name: Upload Drift Artifacts(上传漂移检查产物)
+      if: steps.compile.outputs.status == 'success' && env.REPO_BRANCH == 'master-airoha'
+      continue-on-error: true
+      uses: actions/upload-artifact@v4
+      with:
+        name: drift-${{ github.run_number }}
+        path: |
+          dtb.log
+          refresh.log
+          golden/
+        if-no-files-found: ignore
 
     - name: Check Space Usage(检查空间使用情况)
       if: (!cancelled())
