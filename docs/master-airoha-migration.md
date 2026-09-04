@@ -3,7 +3,8 @@
 > 这份文档记录 2026-09-04 那次整理做了什么、为什么这么做，以及编译出来之后要验哪些东西。
 > 写给两类读者：过一阵子回头看的自己，以及接手验收的下一个会话。
 >
-> **当前状态：两个分支都已推送，未实机验证。** 验收通过前不要把它当主线。
+> **当前状态：两个分支都已推送，CI 编译已验（第 53 次，阶段 1~3 全过），仍未实机验证。**
+> 验收通过前不要把它当主线。
 
 ---
 
@@ -231,6 +232,72 @@ dts 里，ubi 的 dts 根本没有。
 
 ## 五、验收清单
 
+> **进度：第 53 次编译（2026-09-04，run 33867774241）已跑完，阶段 1~3 全过，阶段 4 待实机。**
+> 详见下面的「第 53 次编译的结果」。
+
+### 第 53 次编译的结果
+
+参数：分支 `master-airoha` · 变体 `ubi` · 内存 `auto` · 勾了补丁偏移检查。耗时 1h36m，编译成功。
+
+阶段 2、3 逐条核过，全过：
+
+| 项 | 实际 |
+| --- | --- |
+| `src-link loong` | `Updating feed 'loong' from .../packages` → `Installing package 'luci-app-airoha-npu' from loong` |
+| 设备符号 | `设备: nokia_xg-040g-md-ubi`，defconfig 后仍在 |
+| `CONFIG_PACKAGE_luci-app-airoha-npu` | `=y`，无 `option missing` |
+| `Patch U-Boot SPI-NAND` | 步骤未出现（条件跳过）—— `120`/`121` 收编生效 |
+| `.manifest` | `uboot-envtools - 2026.07-r1`、`luci-app-airoha-npu - 1.0.3-r1` |
+| `build.config` | 只有 `..._DEVICE_nokia_xg-040g-md-ubi=y`，无 tcboot |
+| `golden/*.dts` | 3 个首次生成；`usable-memory-range = <0x0 0x80200000 0x0 0x7fe00000>`、`pcs-handle` 在位、lan1 走 `openwrt,netdev-name`、lan2~4 有 label |
+
+**最硬的一条证据 —— manifest 与老分支比对**（53 号 vs 52 号 `master-XG-040G-MD`+ubi）：
+
+```
+291 行 vs 291 行，唯一差异：
+< base-files - 1940~1a9a9615df
+> base-files - 1940~aa1bbaafa9
+```
+
+只是分支 HEAD 的 hash 标记。**四节结尾「理论上只有内核 hash 会不同」那句要更正**：
+`kernel - 6.18.44~b3bdd222…-r1` 两边**完全相同**，因为那个 `~hash` 是上游内核 tarball
+的 hash，不反映本地补丁集。所以 manifest **证明不了** 608 移除后的内核差异 —— 那一项
+只能靠阶段 4 的 cpufreq 实测。
+
+发现并已修掉两个问题：
+
+**① workflow 漏设 `FLAVOR` / `VARIANT_LABEL`（已修）**
+
+新增的 `master-airoha)` case 只设了 `CONFIG_FILE` 和 `DEVICE_SYMBOL`，漏了
+`master-XG-040G-MD*)` 那边有的另外两行。后果三处：
+
+| 后果 | 第 53 次的实际表现 |
+| --- | --- |
+| tag 丢变体段（`${FLAVOR:+-$FLAVOR}`） | `XG-040G-MD-auto-20260904-53`，少了 `ubi`。以后编 stock，两个变体的 tag 只差 run 号 |
+| Release 正文 | 标题「内存 自适应 · **空** 变体」、「🧩 编译变体：`****`」 |
+| **转正后救砖页列不出固件** | 见下 |
+
+第三条是本文档原先漏掉的一层：阶段 5 只说要改 ③ 的分支正则，但 ② 的
+`/ubi-auto/i.test(rel.tag_name)` 对这个 tag 也匹配不上。转正后 ① 失效、③ 就算改对，
+② 仍然拦住 —— 页面不报错、不空白，一条固件都列不出来。修了 `FLAVOR` 这条才消失。
+
+**注意：第 53 次的产物 tag 仍是错的**，要拿到正确 tag 得重编一次。但**固件本身可以直接刷**
+—— `FLAVOR`/`VARIANT_LABEL` 只参与 tag 拼接和 Release 正文渲染，不进 `.config`、
+不进任何编译步骤。
+
+**② `Patch Fuzz Check` 的 warning 是误报（已修）**
+
+完整 `refresh.log`（drift-53 产物，7291 行）逐行核过：被改写的只有 7 个补丁，全是上游
+自带的 `uboot-airoha/patches/100~106`，改动只有 `diff --git` 14 行、`index` 13 行、
+`new file mode` 6 行、`-- \n2.53.0` 尾 6 行 —— **零个 `@@` hunk 头变化，零行内容变化**。
+本项目自己的补丁（`120`/`121`/`202`/`206`/`805`/`950~954`）一个都没进这份 diff。
+
+`scripts/check-drift.sh` 已改成剥掉这些头尾再比一次，真偏移与格式规范化分开报。
+详见 `docs/upstream-drift.md`。
+
+顺带修的：Release 正文里「`tcboot` / `ubi` 变体都会做这个探测」在这条线上已经没有
+tcboot 了，改成「除 `stock` 外的变体」，两条线共用不会说错。
+
 ### 阶段 1 · 触发编译
 
 Actions 里有个**必须先做**的动作：
@@ -255,7 +322,9 @@ Actions 里有个**必须先做**的动作：
 - [ ] **`Patch U-Boot SPI-NAND` 这步被跳过** —— 正常，补丁已在源码树里
 - [ ] **不出现 `WARNING: option missing!`**（`CONFIG_PACKAGE_luci-app-airoha-npu` 那处）
 - [ ] **勾了偏移检查的话，看 `Patch Fuzz Check` 有没有 warning** ——
-      有 warning 说明某个补丁打上去时位置偏了，要看是哪个
+      有 warning 说明某个补丁打上去时位置偏了，要看是哪个。
+      注意区分「真偏移」和「格式规范化」，脚本现在会分开列，详见
+      `docs/upstream-drift.md`
 
 ### 阶段 3 · 看产物（刷机前）
 
@@ -342,6 +411,13 @@ function isMasterUbiAuto(rel){
 所以**迁移期间是安全的**，①③ 两层各自都能单独挡住，新分支的 release 不会顶掉救砖页
 上给别人下载的那份。
 
+> ② 的「拦不住」有个前提：tag 里那个 `ubi` 段来自 `FLAVOR`，而 workflow 的
+> `master-airoha)` case 原先漏设了它 —— 第 53 次编译的 tag 是
+> `XG-040G-MD-auto-20260904-53`，**不含 `ubi-auto`**，于是 ② 也跟着拦住了。
+> 那是个 bug 不是防线：转正后 ① 一失效，② 反倒会让救砖页**一条固件都列不出来**，
+> 页面同样不报错。已修（补上 `FLAVOR` / `VARIANT_LABEL` 两行），修完 ② 才回到
+> 表里写的行为。
+
 **但转正之后方向反过来了**：`master-airoha` 一旦进了 `IS_PRERELEASE=false` 白名单，
 ① 失效；而 ③ 仍然只认 `master-XG-040G-MD`，于是救砖页会**继续指向那条已经停更的线**，
 页面不报错、不空白，只是安安静静地发老固件。所以上面那两处必须一起改。
@@ -359,9 +435,9 @@ function isMasterUbiAuto(rel){
 
 | 项 | 说明 |
 | --- | --- |
-| `golden/` 是空的 | dtb 基准必须来自一次实机验证过的编译，脚本没法凭空造。首次编译会生成并作为产物上传 |
+| `golden/` 仍是空的 | 第 53 次编译已生成 3 个基准并作为 `drift-53` 产物上传，但基准该来自**实机验证过**的那次编译，所以先不提交。阶段 4 过了再提 |
 | 从未实机验证 | 删 tcboot、`target.mk`/`an7581.mk` 还原、npu 改走 feed，三处都得刷一次才算数 |
-| `refresh` 检查从未真跑过 | 调用方式是照 `include/quilt.mk` 推导的（`clean` 必须有、`QUILT=1` 必须在命令行），但没在真实环境验证过。它是 `continue-on-error`，跑挂了不影响编译 |
+| ~~`refresh` 检查从未真跑过~~ | 第 53 次编译已实跑，调用方式（`clean` + 命令行 `QUILT=1`）正确，能产出 diff。当时报的 warning 是格式规范化误报，脚本已修 |
 | 每周漂移 workflow 没跑过 | 逻辑本地验过（能抓到 801~804 被搬走），但 issue 创建那段没在 GitHub 上跑过 |
 | 25.12 升级路径断了 | 见上文「删 tcboot 的代价」 |
 | 救砖页的分支过滤是硬编码的 | 迁移期间安全（两层各自能挡住），但**转正时必须改**，否则会静默地继续发停更分支的固件。见阶段 5 |

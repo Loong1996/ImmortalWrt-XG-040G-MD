@@ -188,6 +188,36 @@ cmd_versions() {
 # OpenWrt 打包内补丁走 scripts/patch-kernel.sh -> patch -f -p1：整块 reject 才
 # 让构建失败，offset 与 fuzz<=2 是静默成功的。quilt refresh 会把补丁按实际打上
 # 去的位置重写，于是「偏了」就变成了一个看得见的 diff。
+
+# 但 refresh 还会顺手做一件与位置无关的事：把 git format-patch 风格的补丁
+# 规范化成 quilt 风格。uboot-airoha 的 100~106 是从 mainline 直接取来的，带
+# `diff --git` / `index` 头和 `-- \n<git 版本>` 邮件签名尾，refresh 一律剥掉 ——
+# 补丁落位完全正确时也照剥。只看 `git diff --name-only` 就会把这类纯格式改写
+# 报成 offset（2026-09-04 第 53 次编译的误报即出于此：7 个补丁全是这种，
+# 零个 @@ 头变化）。所以剥掉这些头尾再比一次，剩下的才是真的偏移。
+#
+# 不怕漏报：本项目自己的补丁本来就是 quilt 风格，没有这些头；而真实 offset
+# 一定体现在 @@ 行号或内容行上，下面的过滤碰不到它们。
+#
+# sed 表达式一条一行、不用 `\|` 交替：那是 GNU 扩展，BSD sed（macOS）会静默
+# 不匹配，于是本地跑出来的结论和 CI 不一样。
+_strip_git_patch_meta() {
+    sed -e '/^diff --git /d' \
+        -e '/^index [0-9a-f]\{7,\}/d' \
+        -e '/^new file mode /d' \
+        -e '/^deleted file mode /d' \
+        -e '/^old mode /d' \
+        -e '/^new mode /d' \
+        -e '/^similarity index /d' \
+        -e '/^rename from /d' \
+        -e '/^rename to /d' \
+    | awk '{ l[NR] = $0 }
+           /^-- $/ { sig = NR }
+           END { n = (sig ? sig - 1 : NR); for (i = 1; i <= n; i++) print l[i] }'
+    # 签名块只截最后一个 `-- `：补丁正文里理论上也可能出现这行（删掉一行 `- `），
+    # 那种在前面，截了会把真实内容也吞掉。
+}
+
 cmd_refresh() {
     [ -n "$SRC_DIR" ] || die "refresh 需要 -o <源码树路径>"
     [ -d "$SRC_DIR" ] || die "源码树不存在: $SRC_DIR"
@@ -210,19 +240,38 @@ cmd_refresh() {
         || { warn "target/linux refresh 失败"; rc=1; }
 
     info "比对被 refresh 改写的补丁"
-    local changed
+    local changed real="" cosmetic="" f
     changed="$(git -C "$SRC_DIR" diff --name-only -- \
         'package/boot/uboot-airoha/patches' \
         'target/linux/airoha/patches-6.18')"
-    if [ -n "$changed" ]; then
+
+    # 逐个分流：剥掉 git 风格的头尾后还有差异的才是真偏移
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        if git -C "$SRC_DIR" show "HEAD:$f" 2>/dev/null | _strip_git_patch_meta \
+           | diff -q - <(_strip_git_patch_meta < "$SRC_DIR/$f") >/dev/null 2>&1; then
+            cosmetic="$cosmetic$f"$'\n'
+        else
+            real="$real$f"$'\n'
+        fi
+    done <<< "$changed"
+
+    if [ -n "$real" ]; then
         echo "✗ 以下补丁被 refresh 改写，说明打上去时有 offset/fuzz："
-        echo "$changed" | sed 's/^/    /'
+        printf '%s' "$real" | sed 's/^/    /'
         echo
-        git -C "$SRC_DIR" diff -- 'package/boot/uboot-airoha/patches' \
-                                  'target/linux/airoha/patches-6.18' | head -200
+        # shellcheck disable=SC2086
+        git -C "$SRC_DIR" diff -- $(printf '%s' "$real" | tr '\n' ' ') | head -200
         rc=1
     else
         echo "✓ 所有补丁都干净落位，没有偏移"
+    fi
+
+    if [ -n "$cosmetic" ]; then
+        echo
+        echo "· 另有补丁被 refresh 规范化了格式（剥掉 git 风格的头尾），落位是对的："
+        printf '%s' "$cosmetic" | sed 's/^/    /'
+        echo "  不算漂移，不影响构建；源码树里这些文件已被改动，别顺手提交进去。"
     fi
     return $rc
 }
