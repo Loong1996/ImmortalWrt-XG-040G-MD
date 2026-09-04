@@ -312,7 +312,46 @@ Release 会标成 **pre-release**，这是故意的（`master-airoha` 不在
 - [ ] 考虑把它加进选包页索引白名单（同文件搜 `跳过选包页更新`）
       和 `update-package-index.yml` 的分支列表
 - [ ] 考虑把 `build.sh` 的默认分支 `BRANCH=` 改成 `master-airoha`
+- [ ] **改救砖页的分支过滤** —— `guide/recovery-guide.html:872` 的正则，以及
+      `<footer class="credit">` 里「只覆盖 `master-XG-040G-MD` 分支的 `ubi` 变体」
+      那句。**不改的话救砖页会继续发已停更分支的固件，而且不会报任何错。** 详见下节
 - [ ] 合并进 `main`
+
+#### 关于救砖页那份「下载最新 ubi-auto 固件」列表
+
+[recovery-guide.html](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html)
+拉的是 `/releases?per_page=100`（**列全部 release，含 pre-release**），不是
+`/releases/latest`，所以过滤完全靠页面里的 JS（`guide/recovery-guide.html:867`）：
+
+```js
+function isMasterUbiAuto(rel){
+  if (!rel || rel.draft || rel.prerelease) return false;              // ①
+  if (!/ubi-auto/i.test(rel.tag_name || "")) return false;           // ②
+  return /目标分支：master-XG-040G-MD\s*(?:\r?\n|$)/.test(rel.body || "");  // ③
+}
+```
+
+对 `master-airoha` + `ubi` + `auto` 编出来的 release：
+
+| 过滤 | 效果 | 原因 |
+| --- | --- | --- |
+| ① `prerelease` | **拦住** | `master-airoha` 不在 `IS_PRERELEASE=false` 白名单，落进 `*` → `true` |
+| ② tag 含 `ubi-auto` | **拦不住** | tag 是 `XG-040G-MD-ubi-auto-<日期>-<run>`，确实含这个串 |
+| ③ 正文分支名整段匹配 | **拦住** | 正文是 `- 💻 目标分支：master-airoha`，正则要 `master-XG-040G-MD` 后紧跟换行 |
+
+所以**迁移期间是安全的**，①③ 两层各自都能单独挡住，新分支的 release 不会顶掉救砖页
+上给别人下载的那份。
+
+**但转正之后方向反过来了**：`master-airoha` 一旦进了 `IS_PRERELEASE=false` 白名单，
+① 失效；而 ③ 仍然只认 `master-XG-040G-MD`，于是救砖页会**继续指向那条已经停更的线**，
+页面不报错、不空白，只是安安静静地发老固件。所以上面那两处必须一起改。
+
+③ 的那条注释里写着它当初为什么要做整段匹配 ——「否则会误收
+`master-XG-040G-MD-httpd` 这类开发分支」。改的时候保持同样的严格度，别改成宽松的
+`test(/master-airoha/)`，不然将来 `master-airoha-xxx` 之类的试验分支又会漏进来。
+
+另外两个页面不受影响：`portal/index.html` 根本不查 release API；
+`recovery-guide_0_1_0.html` 用的是 `/releases/tags/<固定 TAG>`。
 
 ---
 
@@ -325,6 +364,7 @@ Release 会标成 **pre-release**，这是故意的（`master-airoha` 不在
 | `refresh` 检查从未真跑过 | 调用方式是照 `include/quilt.mk` 推导的（`clean` 必须有、`QUILT=1` 必须在命令行），但没在真实环境验证过。它是 `continue-on-error`，跑挂了不影响编译 |
 | 每周漂移 workflow 没跑过 | 逻辑本地验过（能抓到 801~804 被搬走），但 issue 创建那段没在 GitHub 上跑过 |
 | 25.12 升级路径断了 | 见上文「删 tcboot 的代价」 |
+| 救砖页的分支过滤是硬编码的 | 迁移期间安全（两层各自能挡住），但**转正时必须改**，否则会静默地继续发停更分支的固件。见阶段 5 |
 
 ---
 
