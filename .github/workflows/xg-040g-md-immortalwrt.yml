@@ -314,6 +314,25 @@ jobs:
     
     - name: Install Feeds(安装feeds)
       run: |
+        # luci.mk 装 root/ 用的是 `cp -pR`（include/luci.mk），-p 保留权限 ——
+        # 仓库里的文件模式**逐位进固件**。rpcd 只加载 /usr/libexec/rpcd/ 下可执行
+        # 的脚本，所以 644 的 rpcd 脚本会让 luci 页面报
+        #   RPC call to luci.airoha_npu/getStatus failed with error -32000: Object not found
+        # 而编译、打包、manifest 全都正常 —— 又一个「编得过、装得上、就是不工作」。
+        # npu 包出树时就丢过一次执行位（老分支源码树里那份是 755）。
+        bad=""
+        for f in $(find "$GITHUB_WORKSPACE/packages" -type f \
+                        -path '*/root/usr/libexec/rpcd/*' -o \
+                        -type f -path '*/root/etc/init.d/*' 2>/dev/null); do
+          [ -x "$f" ] || bad="$bad ${f#$GITHUB_WORKSPACE/}"
+        done
+        if [ -n "$bad" ]; then
+          echo "::error::以下脚本缺可执行位，装进固件后 rpcd / init 不会加载它们："
+          for f in $bad; do echo "::error::  $f"; done
+          echo "::error::修：git update-index --chmod=+x <文件>"
+          exit 1
+        fi
+
         cd $OPENWRT_PATH
         # 本仓库 packages/ 下的包（luci-app-airoha-npu）挂成 src-link feed，
         # 不进源码仓库。feeds.conf 优先于 feeds.conf.default。
