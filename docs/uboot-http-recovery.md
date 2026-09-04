@@ -48,9 +48,11 @@
 
 拔网线随时安全，写 flash 不经过网络。**要命的是断电** —— 齐闪期间断电才是真的砖。
 
-### 刷写等于恢复出厂
+### 传了固件就等于恢复出厂，只换引导器不是
 
-`ubi_write_production` 会先删掉 `rootfs_data` 给新卷腾地方，所以**网页刷写必然清空配置**，不管勾没勾任何选项。
+`ubi_write_production`（写 `fit` 卷）会先删掉 `rootfs_data` 给新卷腾地方，所以**这次上传里只要带了固件，配置必然被清空**，勾没勾别的选项都一样。
+
+**只传 `preloader.bin` / `bl31-uboot.fip`、不传固件**的那种日常更新引导器则不清配置。`954` 之前会 —— 那是个 bug，见补丁清单里 `954` 那节。
 
 系统还能进的话，请用 `sysupgrade -c` 保留配置。这个页面的定位是「系统起不来了」。
 
@@ -107,7 +109,7 @@ immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-bl31-uboot.fip     ← BL2 收，
 
 ### 日常更新引导器就不用勾了
 
-BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fip` 那一个卷。**只要 `ubi part ubi` 挂得上，就不要勾重建。**
+BL2 走 `mtd`，完全不碰 UBI；FIP 走 `httpd_write_fip`，它自己只换 `fip` 那一个卷，连 `rootfs_data` 都不动（`954`，见下）。**只要 `ubi part ubi` 挂得上，就不要勾重建。**
 
 覆盖正在运行的 U-Boot 是安全的：SPI-NAND 不能 XIP，当前这份早就解压在 DRAM 里跑了，和 flash 上的副本没关系。
 
@@ -124,6 +126,7 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `ubi_write_fip`，它自己只换 `fi
 | `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
 | `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项、`envver` 自动刷新、`ethaddr` 两道闸 |
 | `953-xg-040g-md-httpd-stock-restore` | 救砖页刷回原厂：整片 `all_flash.bin` 或单个原厂分区 |
+| `954-xg-040g-md-httpd-fip-preserve-rootfs-data` | 网页更新引导器不再连带清掉配置 |
 
 `206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
 
@@ -298,6 +301,61 @@ if (!is_zero_ethaddr(env_enetaddr)) {
 > 按值判断则两件事一起做到了：`ri` 有真值就盖掉生成的随机地址，`ri` 是擦除态就不动 —— 后者同时保护了手工 `setenv` 进去的 MAC。
 
 出厂 MAC 一旦随 `ri` 卷擦掉就找不回来了，机身标签是唯一的真值来源。
+
+### `954`：日常更新引导器不再清配置
+
+**症状**：从网页 0.1.0 升到 0.1.1，只传了 `preloader.bin` 和 `bl31-uboot.fip`、**没传固件**，
+结果 OpenWrt 的设置全没了。固件（`fit` 卷）自始至终没被碰过 —— 消失的是 overlay。
+
+**原因**：网页上「U-Boot」那一格当时借用了板子自己的 `ubi_write_fip`：
+
+```
+ubi_write_fip=run ubi_remove_rootfs ; ubi check fip && ubi remove fip ; \
+              ubi create fip 0x100000 static && ubi write $loadaddr fip $filesize
+```
+
+`ubi_remove_rootfs` 删的 `rootfs_data`，正是 UBIFS 挂在 `fit` 里那个只读 squashfs 上面的
+可写层，装着首次启动之后的每一处配置改动。下次开机 `ubi_prepare_rootfs` 发现它不在，
+建一个空的顶上 —— 从 OpenWrt 那边看，和恢复出厂一模一样。
+
+**`ubi_write_fip` 本身没有错，也没有被改。** 它是板子的原始脚本（`defenvs` 里的，比网页救砖
+这个功能还早），给 bootmenu 第 4 项用，而那一项刷完紧跟着 `run reset_factory` —— 那是一次
+**刻意的完整重置**，丢掉 `rootfs_data` 是它的本意。网页把同一个脚本拿去做一次例行的引导器
+更新，是两件语义不同的事。**bug 在这次借用，不在被借的脚本。**
+
+而且那对 remove/create 在这里本来就不承重：`fip` 每次都建在固定的 `0x100000`，对一个已经
+存在的 `fip` 就地 `ubi write` 装得进它自己现有的预留，不需要先释放什么。删掉再按同样大小
+建回来，净收益是零 —— `vmt.c` 里 `ubi_remove_volume()` 把 `reserved_pebs` 还给 `avail_pebs`，
+`ubi_create_volume()` 紧接着又原样要回同样多。
+
+所以拆出一条独立的 `httpd_write_fip`（和 `httpd_write_bl2` 挨着 `mtd_write_bl2` 是同一个套路），
+将来改动 TFTP 菜单那条重置流程、或是网页这条例行更新流程，都不会悄悄改掉另一条的行为：
+
+```
+httpd_write_fip=if ubi check fip ; then ubi write $loadaddr fip $filesize ; else run ubi_write_fip ; fi
+```
+
+只有 `fip` **还不存在**时（首次迁移，那时 `rootfs_data` 同样还不存在）才需要建卷，
+也只有那时驱逐 `rootfs_data` 是无害的 —— 那一支直接 `run ubi_write_fip` 复用原脚本，
+不重复一遍建卷逻辑。走到那里时它自己的 `ubi check fip && ubi remove fip` 恰好是空操作。
+
+> **新的 fip 比旧的小，就地写会不会留下旧数据的尾巴？** 不会。`ubi write` 不是「覆盖前 N
+> 个字节」，是 UBI 的 volume update 语义 —— `drivers/mtd/ubi/upd.c` 的 `ubi_start_update()`
+> 在写第一个字节之前，先把卷的 `reserved_pebs` 挨个 `ubi_eba_unmap_leb()`，注释写得很直白：
+> `/* Before updating - wipe out the volume */`。整卷清空，旧内容一个字节都不剩。
+>
+> `fip` 是静态卷，收尾的 `clear_update_marker()` 会按新长度重算 `used_bytes` / `used_ebs` /
+> `last_eb_bytes`，读的时候只读这么多。
+>
+> 反方向也有闸：新 fip 要是大过卷的预留，`cmd/ubi.c` 在动手之前就 `size > volume size!
+> Aborting!` 退出，不会写一半坏在那儿。加上 `set_update_marker()` 先落盘、写完才清 ——
+> 中途掉电下次挂载会认出这个卷无效，不会拿半个 fip 去引导。
+>
+> 参考量级：`fip` 卷预留 `0x100000`（1 MiB），实际的 `bl31-uboot.fip` 约 318 KiB，用掉 31%。
+
+**BL2 从头到尾不涉及。** `httpd_write_bl2` 是朴素的 `mtd erase bl2 && mtd write bl2`，
+操作的是 `bl2` 这个 mtd 分区（`0x0`~`0x20000`），完全在 `ubi` 分区（`0x20000` 往后）之外 ——
+而 `rootfs_data` 和其它所有 UBI 卷都住在后者里。升级时连着 FIP 一起刷 BL2，对配置没有风险。
 
 ---
 
