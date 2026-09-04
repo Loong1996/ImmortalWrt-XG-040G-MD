@@ -27,7 +27,7 @@ ImmortalWrt firmware for NOKIA BELL XG-040G-MD
 
 ## 编译
 
-本仓库只包含编译配置、补丁与 CI 流程，固件源码在 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。选包详细用法见[自定义软件包 → 临时加装软件包](docs/packages.md#临时加装软件包选包页)。
+本仓库只包含编译配置、补丁、自带软件包与 CI 流程，固件源码在 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，补丁已内置于源码分支，无需手动执行 `patch.sh`。`packages/` 下的包由 `src-link` 挂成 feed，不进源码仓库。选包详细用法见[自定义软件包 → 临时加装软件包](docs/packages.md#临时加装软件包选包页)。
 
 1. Fork 本仓库，在 Actions 页面启用 workflow
 2. `Actions → XG-040G-MD → Run workflow`，选择编译分支与设备变体即可 —— 内存容量默认[自适应](docs/variants.md#内存容量)，换过颗粒也不用管
@@ -67,7 +67,7 @@ Release 的标题、正文与 tag 都会标出本次用的变体，例如 `XG-04
 
 * 编译脚本最初基于 [dalutou/OpenWrt-for-XG-040G-MD](https://github.com/dalutou/OpenWrt-for-XG-040G-MD) 修改，经过持续改写，与上游的偏差已经非常大。
 * 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)。master 线的设备支持叠在上游之上，便于持续跟进；25.12 线直接采用 [fzs209/immortalwrt](https://github.com/fzs209/immortalwrt) 的实测快照。
-* 闪存适配（SkyHigh S35ML02G300 与 Fudan Micro FM25G01B/FM25G02B）：25.12 线的 SkyHigh 支持仍由本项目自带（`backport-6.12/430`、`431`，源自 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt)），FM25G 已改由上游 `backport-6.12/436`、`437` 提供；master 线内核由上游 6.18 承担。官方 UBI U-Boot（2026.07）只自带 SkyHigh，复旦颗粒还要 `patch/uboot-airoha/120`、`121`（编译时拷进 `uboot-airoha`）。
+* 闪存适配（SkyHigh S35ML02G300 与 Fudan Micro FM25G01B/FM25G02B）：25.12 线的 SkyHigh 支持仍由本项目自带（`backport-6.12/430`、`431`，源自 [xiangtailiang/openwrt](https://github.com/xiangtailiang/openwrt)），FM25G 已改由上游 `backport-6.12/436`、`437` 提供；master 线内核由上游 6.18 承担。官方 UBI U-Boot（2026.07）只自带 SkyHigh，复旦颗粒还要 `120`、`121` 两个补丁 —— `master-XG-040G-MD` 与 `xpon-test` 从本仓库 `patch/uboot-airoha/` 在编译时拷进去，`master-airoha` 已把它们收编进源码树。
 * 基于 [XG-040G-MD (AN7581) NPU 固件加载报错分析与修复记录](https://github.com/xiangtailiang/OpenWrt-for-XG-040G-MD/blob/main/docs/npu-firmware-load.md) 修复内核日志报错：
     ```text
     airoha-npu 1e900000.npu: Direct firmware load for airoha/en7581_npu_rv32.bin failed with error -2

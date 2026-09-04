@@ -52,7 +52,7 @@
 | [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt) | 源码树，编译在这里跑。**补丁已内置在分支中** | 编完约 30 GB |
 | 本仓库 | 只提供 `config/*.config` | clone 后 10 MB |
 
-本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`img/` 与编译无关。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
+本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`img/` 与编译无关。`packages/` 会被挂成 `src-link` feed（`luci-app-airoha-npu` 在里面），`watch/`、`golden/`、`upstream.lock` 只给[漂移检查](upstream-drift.md)用。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
 
 推荐 clone 本仓库而不是只拷一个 `.config`：配置会随项目更新，`git pull` 就能同步，只拷文件很容易编出一份和 CI 不一致的固件却不自知。
 
@@ -142,6 +142,7 @@ python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
 | `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `ubi`（默认，推荐） | `nokia_xg-040g-md-ubi` |
 | `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
 | `master-XG-040G-MD` | 同上 | `tcboot`（刷机不再维护） | `nokia_xg-040g-md-tcboot` |
+| `master-airoha` | `config/xg-040g-md-master.config` | `ubi`（默认） / `stock`，**无 tcboot** | `nokia_xg-040g-md-ubi` / `nokia_xg-040g-md` |
 | `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
 
 ```bash
