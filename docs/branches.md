@@ -10,6 +10,8 @@
 
 ## `master-airoha` —— 整理后的 master 线
 
+> 这次整理的完整说明与**实机验收清单**见 [master-airoha 迁移说明](master-airoha-migration.md)。
+
 把 `master-XG-040G-MD` 那 15 个零散提交按主题重新捋成 9 个，并做了三件事：
 
 * **删掉 `tcboot` 变体**（dts、分区表 dtsi、291 行的 `patches-6.18/608` CPU PLL
