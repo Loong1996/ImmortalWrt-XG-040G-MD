@@ -54,7 +54,7 @@ ImmortalWrt firmware for Airoha-based Nokia ONTs: **XG-040G-MD**（AN7581）与 
 
 ## 项目说明
 
-* 编译脚本最初基于 [dalutou/OpenWrt-for-XG-040G-MD](https://github.com/dalutou/OpenWrt-for-XG-040G-MD) 修改，经过持续改写，与上游的偏差已经非常大。前身是 [ImmortalWrt-XG-040G-MD](https://github.com/Loong1996/ImmortalWrt-XG-040G-MD)，那边保留着 25.12 线与 tcboot 变体的历史，不再更新。
+* 编译脚本最初基于 [dalutou/OpenWrt-for-XG-040G-MD](https://github.com/dalutou/OpenWrt-for-XG-040G-MD) 修改，25.12 线来自 [fzs209](https://github.com/fzs209) 的实测快照，经过持续改写，与两者的偏差已经非常大。前身是 [ImmortalWrt-XG-040G-MD](https://github.com/Loong1996/ImmortalWrt-XG-040G-MD)，完整的提交历史、25.12 线与 tcboot 变体都保留在那边，不再更新；本仓库从一个提交起步，许可证仍是 MIT，保留原作者的版权声明。
 * 固件源码使用 [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt)，fork 自官方 [immortalwrt/immortalwrt](https://github.com/immortalwrt/immortalwrt)。机型支持叠在上游 master 之上，便于持续跟进。
 * 闪存适配：内核由上游 6.18 承担（SkyHigh S35ML02G300 与 Fudan Micro FM25G01B/FM25G02B）；官方 UBI U-Boot（2026.07）只自带 SkyHigh，复旦颗粒的 `120`、`121` 两个补丁在源码树里。
 * 基于 [XG-040G-MD (AN7581) NPU 固件加载报错分析与修复记录](https://github.com/xiangtailiang/OpenWrt-for-XG-040G-MD/blob/main/docs/npu-firmware-load.md) 修复内核日志报错：
