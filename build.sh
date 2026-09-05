@@ -226,6 +226,12 @@ else
 
     if [ "$DO_UPDATE" = "1" ]; then
         info "更新源码树"
+        # inject-author-info.py 上一轮改过的三个模板是本脚本自己的产物，不算你的
+        # 改动。先还原，否则每次远端被强推后都会被它们拦在「工作区有未提交的修改」。
+        git -C "$SRC_DIR" checkout -q -- \
+            package/base-files/files/etc/banner \
+            package/base-files/files/etc/openwrt_release \
+            package/base-files/files/usr/lib/os-release 2>/dev/null || true
         git -C "$SRC_DIR" fetch origin "$BRANCH"
         # master 线跟进上游走的是 rebase + force-with-lease（见 docs/branches.md），
         # 远端被强推后本地 HEAD 不再是远端的祖先，--ff-only 会直接失败。分两种情况处理：
