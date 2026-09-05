@@ -440,7 +440,7 @@ fi
 
 # make defconfig 遇到源码树里不存在的符号会静默删行、不报任何错。漏掉这次核对，
 # 就要等一两小时编完、发现产物文件名不对才知道选错了变体或写错了包名。
-grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+grep -q "^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config \
     || die "defconfig 后设备符号丢失，$DEVICE_SYMBOL 在分支 $BRANCH 中可能不存在"
 info "已选定设备: $DEVICE_SYMBOL"
 stage_done "配置"
