@@ -3,37 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>XG-040G-MD 选包</title>
+<title>ImmortalWrt-Airoha 选包</title>
 <style>
+/* 与 Airoha Web U-Boot 恢复页同一套令牌：macOS 的灰底白卡、单一蓝色、细分隔线 */
 :root{
-  --bg:#f6f7f9; --panel:#fff; --fg:#1b1f24; --dim:#656d76; --line:#d8dee4;
-  --accent:#0969da; --add:#1a7f37; --del:#cf222e; --chip:#eef1f4; --warn:#9a6700;
+  --bg:#f5f5f7; --panel:#fff; --fg:#1d1d1f; --dim:#6e6e73; --line:rgba(60,60,67,.16);
+  --accent:#0a66d6; --add:#1f8a3b; --del:#d9342b; --chip:#e8e8ed; --warn:#b8500f;
+  --btn:#fff; --btnb:rgba(0,0,0,.14);
 }
 @media (prefers-color-scheme:dark){
   :root{
-    --bg:#0d1117; --panel:#161b22; --fg:#e6edf3; --dim:#8d96a0; --line:#30363d;
-    --accent:#4493f8; --add:#3fb950; --del:#f85149; --chip:#21262d; --warn:#d29922;
+    --bg:#1e1e20; --panel:#2a2a2d; --fg:#f5f5f7; --dim:#a1a1a6; --line:rgba(255,255,255,.1);
+    --accent:#2f7ff2; --add:#4cd964; --del:#ff5f57; --chip:#3a3a3d; --warn:#f0a04a;
+    --btn:#3a3a3d; --btnb:rgba(255,255,255,.14);
   }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);
-  font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans SC","PingFang SC","Microsoft YaHei",sans-serif}
+  font:13.5px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif}
 .wrap{max-width:1000px;margin:0 auto;padding:16px 16px 200px}
-h1{font-size:20px;margin:8px 0 4px}
+h1{font-size:1.45rem;font-weight:700;letter-spacing:-.01em;margin:8px 0 4px}
 .sub{color:var(--dim);margin:0 0 16px}
 .sub a{color:var(--accent)}
 .bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
 select,input[type=search],button{
-  font:inherit;color:var(--fg);background:var(--panel);
-  border:1px solid var(--line);border-radius:6px;padding:6px 10px}
+  font:inherit;color:var(--fg);background:var(--btn);
+  border:1px solid var(--btnb);border-radius:6px;padding:5px 10px;box-shadow:0 .5px 1px rgba(0,0,0,.08)}
+input[type=search]{background:var(--panel);box-shadow:none}
+input[type=search]:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,102,214,.25)}
 input[type=search]{flex:1;min-width:220px}
 button{cursor:pointer}
 button:hover{border-color:var(--accent)}
-button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.primary{background:var(--accent);border-color:transparent;color:#fff;font-weight:500}
 .meta{color:var(--dim);font-size:13px;margin:0 0 12px}
 .meta.warn{color:var(--warn)}
 .meta.err{color:var(--del)}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:9px;overflow:hidden}
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
 .grp>summary{padding:8px 12px;cursor:pointer;font-weight:600;list-style:none;display:flex;gap:8px}
@@ -56,7 +61,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .row .ver{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   font-size:11px;color:var(--dim);white-space:nowrap;max-width:14em;overflow:hidden;text-overflow:ellipsis}
 .row .t{color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.badge{font-size:11px;padding:0 6px;border-radius:10px;background:var(--chip);color:var(--dim);white-space:nowrap}
+.badge{font-size:11px;padding:0 7px;border-radius:99px;background:var(--chip);color:var(--dim);white-space:nowrap}
 .badge.ok{color:var(--add)}
 .badge.mid{color:var(--warn)}
 .badge.no{color:var(--del)}
@@ -86,7 +91,7 @@ a.pill:hover{border-color:var(--accent)}
 .fwsum .n{font-weight:600}
 .fwsum .brk{color:var(--dim);font-size:13px;margin-top:2px}
 .out{position:fixed;left:0;right:0;bottom:0;background:var(--panel);
-  border-top:1px solid var(--line);padding:10px 16px}
+  border-top:1px solid var(--line);padding:10px 16px;backdrop-filter:blur(16px)}
 .out .inner{max-width:1000px;margin:0 auto;display:flex;gap:8px;align-items:flex-start}
 textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
   font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
@@ -104,9 +109,9 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
 <body>
 <div class="wrap">
   <p class="sub" style="margin-bottom:8px"><a href="./">← 回门户</a></p>
-  <h1>XG-040G-MD 选包</h1>
+  <h1>ImmortalWrt-Airoha 选包</h1>
   <p class="sub">勾选想要的软件包，把底部生成的字符串粘进
-    <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD/actions" target="_blank" rel="noopener">Actions</a>
+    <a href="https://github.com/Loong1996/ImmortalWrt-Airoha/actions" target="_blank" rel="noopener">Actions</a>
     里 <code>附加软件包</code> 那一栏，再跑一次构建即可。点每行右侧的 <b>ⓘ</b> 看依赖、冲突与上游地址。<br>
     没勾的包行尾会标出刷完机还能不能装：<span class="badge ok">可后装</span>
     直接 <code>apk add</code> 就行；<span class="badge mid">缺 N 依赖</span>
@@ -126,7 +131,7 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
   <p class="meta" id="status">加载中…</p>
 
   <div class="panel" id="list"></div>
-  <footer class="credit">作者 <a href="https://github.com/Loong1996/ImmortalWrt-XG-040G-MD" target="_blank" rel="noopener">Loong</a></footer>
+  <footer class="credit">作者 <a href="https://github.com/Loong1996/ImmortalWrt-Airoha" target="_blank" rel="noopener">Loong</a></footer>
 </div>
 
 <div class="out">
@@ -155,17 +160,13 @@ textarea{flex:1;width:100%;min-height:56px;max-height:120px;resize:vertical;
 var OFFICIAL_PREFIX = "official:";
 var FEEDS = ["base", "luci", "packages", "routing", "telephony"];
 var OFFICIAL = {
-  // 都用滚动地址，不带具体小版本号，免得哪天过期
-  "openwrt-25.12-XG-040G-MD":
-    "https://downloads.immortalwrt.org/releases/25.12-SNAPSHOT/packages/aarch64_cortex-a53/",
-  "master-XG-040G-MD":
+  // 滚动地址，不带具体小版本号，免得哪天过期。MD 与 MF 同一架构，共用一份。
+  "master-airoha":
     "https://downloads.immortalwrt.org/snapshots/packages/aarch64_cortex-a53/"
 };
 var OPTIONS = [
-  { v: "openwrt-25.12-XG-040G-MD", t: "openwrt-25.12-XG-040G-MD（编译索引）" },
-  { v: "master-XG-040G-MD", t: "master-XG-040G-MD（编译索引）" },
-  { v: OFFICIAL_PREFIX + "openwrt-25.12-XG-040G-MD", t: "官方索引 · 25.12-SNAPSHOT（仅名字与版本）" },
-  { v: OFFICIAL_PREFIX + "master-XG-040G-MD", t: "官方索引 · snapshots（仅名字与版本）" }
+  { v: "master-airoha", t: "master-airoha（编译索引，MD / MF 共用）" },
+  { v: OFFICIAL_PREFIX + "master-airoha", t: "官方索引 · snapshots（仅名字与版本）" }
 ];
 var MAX_FLAT = 400;   // 搜索结果一次最多渲染多少条，防止上千 DOM 拖垮手机
 var MAX_REV = 40;     // 反向依赖最多列几个（libc 这种会有上千个）

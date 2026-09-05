@@ -25,9 +25,10 @@ import sys
 from pathlib import Path
 
 # LuCI 固件版本本来就用 / 分隔，追加时带斜杠；SSH banner 是新起一行，不要斜杠。
-BANNER_LINE = " Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
-RELEASE_SUFFIX = " / Loong · https://github.com/Loong1996/ImmortalWrt-XG-040G-MD"
-MARKER = "github.com/Loong1996/ImmortalWrt-XG-040G-MD"
+BANNER_LINE = " Loong · https://github.com/Loong1996/ImmortalWrt-Airoha"
+RELEASE_SUFFIX = " / Loong · https://github.com/Loong1996/ImmortalWrt-Airoha"
+# 前缀兼容旧仓库名：已经注入过旧链接的源码树也能认出来，不会写第二行
+MARKER = "Loong · https://github.com/Loong1996/ImmortalWrt-"
 
 # 2026-08-31 之前的版本改的是 10_system.js，把后缀拼在 (luciversion || '') 外面。
 # 那次改动落在 feeds 源码树里，后来只是让脚本不再去改，没有撤回已经改进去的行——

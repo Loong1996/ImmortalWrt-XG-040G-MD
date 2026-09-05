@@ -1,9 +1,9 @@
 # 自定义软件包
 
-两条线各有一份配置，改包需**两份都改**（内容目前完全一致）：
+两款机型各有一份配置，改包需**两份都改**（除 target 段外内容一致）：
 
-* 25.12 线 —— [`config/xg-040g-md.config`](../config/xg-040g-md.config)
-* master 线 —— [`config/xg-040g-md-master.config`](../config/xg-040g-md-master.config)
+* XG-040G-MD —— [`config/xg-040g-md-master.config`](../config/xg-040g-md-master.config)
+* XG-040G-MF —— [`config/xg-040g-mf-master.config`](../config/xg-040g-mf-master.config)
 
 编辑后提交即可，依赖由 `make defconfig` 自动补全。当前已内置：
 
@@ -33,7 +33,7 @@
 
 不想动配置文件、只是这次编译想多带几个包时，用选包页：
 
-**<https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html>**
+**<https://loong1996.github.io/ImmortalWrt-Airoha/packages.html>**
 
 页面上的可选清单取自源码树的 `tmp/.packageinfo`，所以**只列出该分支真正编得出来的包**，自建的 `luci-app-airoha-npu` 也在里面。`HIDDEN` 的包会被剔掉——它们在 menuconfig 里没有选项条目，勾了也不会生效，列出来只会让构建白失败一次。勾选后底部会生成一串包名，粘进 `Run workflow` 的 **附加软件包** 那一栏：
 
@@ -65,10 +65,10 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 两处不准要知道：「新增带入」是**下限**，只算无条件依赖；**移除之后清单偏多**，被移除的包腾出来的依赖不会跟着消失（那要 defconfig 重算才知道，页面不猜）。
 
-页面左上角第一个下拉框切换数据源，共四项——两条编译线各一项，外加两项官方索引：
+页面左上角第一个下拉框切换数据源，共两项——编译索引与官方索引：
 
 * **编译索引**（首选）—— 带描述、分类、版本、依赖、冲突、许可证与上游地址，含自建包，且保证这条分支编得出来。
-* **官方索引** —— 直接从 immortalwrt 下载站取（`25.12-SNAPSHOT` 与 `snapshots` 的 `aarch64_cortex-a53`），**不依赖任何构建**，Pages 一开就能用。代价是它整份数据**只有包名和版本两项**——`index.json` 的内容就是 `{"464xlat":"13", ...}`，没有第三个字段可挖。所以这一档没有描述、分类、依赖，也不含 kmod 与自建包，更不保证本源码树都编得出来，只能靠搜索用。
+* **官方索引** —— 直接从 immortalwrt 下载站取（`snapshots` 的 `aarch64_cortex-a53`），**不依赖任何构建**，Pages 一开就能用。代价是它整份数据**只有包名和版本两项**——`index.json` 的内容就是 `{"464xlat":"13", ...}`，没有第三个字段可挖。所以这一档没有描述、分类、依赖，也不含 kmod 与自建包，更不保证本源码树都编得出来，只能靠搜索用。
 
 某条线的编译索引还不存在时，页面会自动回落到官方索引并在状态行说明原因。真编不出来的包名，workflow 那道核对会在编译前拦下，不会白等一两个小时。
 
@@ -129,7 +129,7 @@ luci-app-nginx-manager luci-app-samba4 -luci-app-openclash
 
 改了门户文案、选包页界面或救砖教程，不勾索引就行。feeds 更新了想刷新清单，再勾上。正常构建成功时也会顺带更新对应那条线的索引。
 
-选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）。根路径是门户（三张卡片），选包工具在 [`packages.html`](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html)。页面在 [`portal/`](../portal/)、[`selector/`](../selector/)，发布脚本是 [`scripts/publish-pages.sh`](../scripts/publish-pages.sh)——出固件和本 workflow 共用，json 可缺（只刷网页时不动已有索引）。两条编译线各有一份索引，页面左上角可切换。
+选包页托管在本仓库的 `gh-pages` 分支（首次需在 `Settings → Pages` 里把源设为 `gh-pages`）。根路径是门户（三张卡片），选包工具在 [`packages.html`](https://loong1996.github.io/ImmortalWrt-Airoha/packages.html)。页面在 [`portal/`](../portal/)、[`selector/`](../selector/)，发布脚本是 [`scripts/publish-pages.sh`](../scripts/publish-pages.sh)——出固件和本 workflow 共用，json 可缺（只刷网页时不动已有索引）。两条编译线各有一份索引，页面左上角可切换。
 
 使用注意：
 

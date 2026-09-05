@@ -6,7 +6,7 @@
 
 **什么时候值得这么做**：需要反复改内核补丁、调 DTS、抓 `V=s` 完整日志时。CI 每次都是冷启动，改一行也要重编一两个小时；本地第二次起走增量，通常几分钟。像 [USB2 口带不动 USB3 U 盘](usb2-port-issue.md) 这类要反复试补丁的问题，本地编译基本是必需的。
 
-**什么时候不必**：只是想要一份能刷的固件、或只是想换几个软件包 —— 直接用 [选包页](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/packages.html) 加 `Run workflow` 更省事。
+**什么时候不必**：只是想要一份能刷的固件、或只是想换几个软件包 —— 直接用 [选包页](https://loong1996.github.io/ImmortalWrt-Airoha/packages.html) 加 `Run workflow` 更省事。
 
 ## 一、机器要求
 
@@ -52,22 +52,22 @@
 | [Loong1996/immortalwrt](https://github.com/Loong1996/immortalwrt) | 源码树，编译在这里跑。**补丁已内置在分支中** | 编完约 30 GB |
 | 本仓库 | 只提供 `config/*.config` | clone 后 10 MB |
 
-本仓库其余内容编译都用不到：`patch-25.12/` 是 25.12 线的对照参考（补丁已内置源码分支，**不要跑 `patch.sh`**），`docs/`、`selector/`、`img/` 与编译无关。`packages/` 会被挂成 `src-link` feed（`luci-app-airoha-npu` 在里面），`watch/`、`golden/`、`upstream.lock` 只给[漂移检查](upstream-drift.md)用。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
+本仓库其余内容编译都用不到：`docs/`、`selector/`、`portal/`、`guide/`、`img/` 与编译无关。`packages/` 会被挂成 `src-link` feed（`luci-app-airoha-npu` 在里面），`watch/`、`golden/`、`upstream.lock` 只给[漂移检查](upstream-drift.md)用。`config/pkg-versions.txt` 目前没有任何有效行，workflow 里「覆盖软件包版本」那一步整个可以跳过。
 
 推荐 clone 本仓库而不是只拷一个 `.config`：配置会随项目更新，`git pull` 就能同步，只拷文件很容易编出一份和 CI 不一致的固件却不自知。
 
 ## 三、完整步骤
 
-以默认组合 `master-XG-040G-MD` + `ubi` 变体为例。**全程不要用 root 用户** —— OpenWrt 构建系统会直接拒绝执行。
+以默认组合 `master-airoha` + `xg-040g-md` + `ubi` 变体为例。**全程不要用 root 用户** —— OpenWrt 构建系统会直接拒绝执行。
 
 > 💡 **这一章的全部步骤已封装成仓库根目录的 [`build.sh`](../build.sh)。** 装好第 1 步的依赖后：
 >
 > ```bash
-> git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
-> cd ImmortalWrt-XG-040G-MD
-> ./build.sh                          # master 线 + ubi 变体（推荐）
+> git clone https://github.com/Loong1996/ImmortalWrt-Airoha.git
+> cd ImmortalWrt-Airoha
+> ./build.sh                          # XG-040G-MD + ubi 变体（推荐）
 > ./build.sh -v stock -j 4            # 换变体、限制并行度
-> ./build.sh -b master-airoha -D xg-040g-mf   # MF 机型，只有 master-airoha 有
+> ./build.sh -D xg-040g-mf            # XG-040G-MF
 > ./build.sh -p "luci-app-passwall"   # 附加软件包，格式同选包页
 > ./build.sh -h                       # 全部参数
 > ```
@@ -76,9 +76,9 @@
 >
 > | 脚本参数 | workflow 输入 | 默认 |
 > | --- | --- | --- |
-> | `-b, --branch` | 编译分支 | `master-XG-040G-MD` |
-> | `-v, --variant` | 设备变体 | `ubi` |
-> | `-D, --device` | 机型 `xg-040g-md` / `xg-040g-mf` | `xg-040g-md`（仅 `master-airoha` 认 MF，其余分支忽略） |
+> | `-b, --branch` | — | `master-airoha`（唯一维护的线） |
+> | `-v, --variant` | 设备变体 `ubi` / `stock` | `ubi` |
+> | `-D, --device` | 机型 `xg-040g-md` / `xg-040g-mf` | `xg-040g-md` |
 > | `-d, --dram` | 内存容量 | `auto` |
 > | `-p, --packages` | 附加软件包 | 空 |
 > | `-j, --jobs` | （CI 用 `nproc`） | CPU 与内存推算的较小值 |
@@ -115,15 +115,14 @@ sudo apt install -y build-essential clang flex bison g++ gawk \
 
 ```bash
 mkdir -p ~/build && cd ~/build
-git clone https://github.com/Loong1996/ImmortalWrt-XG-040G-MD.git
-git clone https://github.com/Loong1996/immortalwrt.git -b master-XG-040G-MD openwrt
+git clone https://github.com/Loong1996/ImmortalWrt-Airoha.git
+git clone https://github.com/Loong1996/immortalwrt.git -b master-airoha openwrt
 cd openwrt
-
-# master 线：让官方 UBI U-Boot 认 FM25G01B/G02B（build.sh / CI 会自动拷）
-cp ../ImmortalWrt-XG-040G-MD/patch/uboot-airoha/*.patch package/boot/uboot-airoha/patches/
 ```
 
-25.12 线把分支换成 `-b openwrt-25.12-XG-040G-MD`。两条线的差异见[源码分支与跟进上游](branches.md)。
+机型支持与 U-Boot 补丁都在源码分支里，不需要再拷任何补丁。
+
+只维护 `master-airoha` 一条线，见[源码分支与跟进上游](branches.md)。
 
 ### 3. feeds
 
@@ -132,26 +131,22 @@ cp ../ImmortalWrt-XG-040G-MD/patch/uboot-airoha/*.patch package/boot/uboot-airoh
 ./scripts/feeds install -a
 
 # 在默认 SSH banner 和 /etc/openwrt_release（LuCI 固件版本）后面追加作者信息（build.sh / CI 会自动跑）
-python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
+python3 ../ImmortalWrt-Airoha/scripts/inject-author-info.py
 ```
 
 ### 4. 配置
 
-分支与变体决定用哪份配置、写哪个设备符号，对应关系和 workflow 的「生成变量」一步一致：
+机型决定子目标与配置文件，变体决定设备符号，对应关系和 workflow 的「生成变量」一步一致：
 
-| 源码分支 | 配置文件 | `device_variant` | 设备符号 |
-| --- | --- | --- | --- |
-| `master-XG-040G-MD` | `config/xg-040g-md-master.config` | `ubi`（默认，推荐） | `nokia_xg-040g-md-ubi` |
-| `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
-| `master-XG-040G-MD` | 同上 | `tcboot`（刷机不再维护） | `nokia_xg-040g-md-tcboot` |
-| `master-airoha` | `config/xg-040g-md-master.config` | `ubi`（默认） / `stock`，**无 tcboot** | `nokia_xg-040g-md-ubi` / `nokia_xg-040g-md` |
-| `master-airoha` + `-D xg-040g-mf` | `config/xg-040g-mf-master.config` | 同上 | `nokia_xg-040g-mf-ubi` / `nokia_xg-040g-mf`，子目标 **`an7583`** |
-| `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
+| 机型 | 子目标 | 配置文件 | `device_variant` | 设备符号 |
+| --- | --- | --- | --- | --- |
+| `xg-040g-md` | `an7581` | `config/xg-040g-md-master.config` | `ubi`（默认，推荐） / `stock` | `nokia_xg-040g-md-ubi` / `nokia_xg-040g-md` |
+| `xg-040g-mf` | `an7583` | `config/xg-040g-mf-master.config` | 同上 | `nokia_xg-040g-mf-ubi` / `nokia_xg-040g-mf` |
 
 ```bash
 DEVICE_SYMBOL=nokia_xg-040g-md-ubi
 SUBTARGET=an7581                     # MF 是 an7583，配置文件换 xg-040g-mf-master.config
-cp ../ImmortalWrt-XG-040G-MD/config/xg-040g-md-master.config .config
+cp ../ImmortalWrt-Airoha/config/xg-040g-md-master.config .config
 
 # 先清掉配置里这个子目标的所有设备行，再插入选中的那个
 sed -i "/^CONFIG_TARGET_airoha_${SUBTARGET}_DEVICE_/d" .config
@@ -192,7 +187,7 @@ grep "^CONFIG_PACKAGE_luci-app-passwall=y" .config    # 同样要核对
 
 探测本身是我们补的（`206-airoha-an7581-probe-dram-size.patch`）—— 上游 U-Boot 只读 DTS 不探测，而它 fixup 时又会覆盖内核的 `memory` 节点，结果 1G 机器被摁回 512M。
 
-> **内存还有第二道闸门**：`linux,usable-memory-range`。U-Boot 探测出 1G，内核仍会按这个属性裁一刀。`master-XG-040G-MD` 线已经把它放到 `0x7fe00000`（2G，等于不裁剪），本地编译不用管。
+> **内存还有第二道闸门**：`linux,usable-memory-range`。U-Boot 探测出 1G，内核仍会按这个属性裁一刀。本线已经把它放到 `0x7fe00000`（2G，等于不裁剪），本地编译不用管。
 >
 > 但如果你是从**上游 immortalwrt** 直接编，那边还是 `0x1fe00000`（512M − 2M），得自己放开：
 >
@@ -232,7 +227,6 @@ ls bin/targets/airoha/an7581/        # MD；MF 在 an7583/
 
 | 变体 | 刷机用文件 |
 | --- | --- |
-| `tcboot` | `*-sysupgrade.bin`（可从 25.12 线固件直接 sysupgrade） |
 | `stock` | `factory-kernel.bin` + `factory-rootfs.bin` |
 | `ubi` | `preloader.bin` + `bl31-uboot.fip`（USB-TTL 刷入）、`*-recovery.itb` 救援镜像 |
 
@@ -305,7 +299,7 @@ make -j$(nproc)
 
 要固定基线时加 `--no-update`：调内核补丁做前后对比时，基线在不知情中变动会让对比失去意义 —— 否证一个假设的前提是只有一个变量在动。本地有未提交的调试修改而更新又被拦下时，它也是直接往下编的退路。
 
-需要留意的是 master 线跟进上游走的是 `rebase` + `push --force-with-lease`（见[源码分支与跟进上游](branches.md)），**远端历史会被重写**，此后普通的 `git pull --ff-only` 必然失败：
+需要留意的是这条线跟进上游走的是 `rebase` + `push --force-with-lease`（见[源码分支与跟进上游](branches.md)），**远端历史会被重写**，此后普通的 `git pull --ff-only` 必然失败：
 
 ```
 fatal: Not possible to fast-forward, aborting.

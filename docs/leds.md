@@ -24,7 +24,7 @@ XG-040G-MD 是光猫改的路由器，**面板丝印还是光猫那套**，而 D
 | lan3 | `mt7530-0:0b:green:lan-3` | mt7530 内置 | SoC gpio45 复用 `phy3_led0` |
 | lan4 | `mt7530-0:0c:green:lan-4` | mt7530 内置 | SoC gpio46 复用 `phy4_led0` |
 
-四个都由 [`board.d/01_leds`](https://github.com/Loong1996/immortalwrt/blob/master-XG-040G-MD/target/linux/airoha/an7581/base-files/etc/board.d/01_leds) 绑 `netdev` trigger，模式 `link tx rx` —— 有链路常亮，收发时闪。
+四个都由 [`board.d/01_leds`](https://github.com/Loong1996/immortalwrt/blob/master-airoha/target/linux/airoha/an7581/base-files/etc/board.d/01_leds) 绑 `netdev` trigger，模式 `link tx rx` —— 有链路常亮，收发时闪。
 
 > ℹ️ **PHY LED 的 `brightness` 恒为 0 是正常的。** 它们工作在 PHY 硬件控制模式，亮灭由芯片自己驱动，不经过 sysfs 的软件亮度。判断是否配好要看 `trigger` 是不是 `netdev`，不是看 `brightness`。
 
@@ -49,7 +49,7 @@ ret = air_buckpbus_reg_modify(phydev, EN8811H_GPIO_OUTPUT,
 
 两个佐证：写 sysfs 的 `brightness` 强制点亮无效（规则确实写进了 PHY 寄存器，但引脚是输入）；failsafe 下灯却正常（那条路径不跑 MAC 钩子，lan1 只 attach 一次）。
 
-修复在 [`patches-6.18/805`](https://github.com/Loong1996/immortalwrt/blob/master-XG-040G-MD/target/linux/airoha/patches-6.18/805-net-phy-air_en8811h-reconfigure-LED-gpio-direction-af.patch)，把引脚方向配置移进 `config_init`，放在 MCU 重启之后。
+修复在 [`patches-6.18/805`](https://github.com/Loong1996/immortalwrt/blob/master-airoha/target/linux/airoha/patches-6.18/805-net-phy-air_en8811h-reconfigure-LED-gpio-direction-af.patch)，把引脚方向配置移进 `config_init`，放在 MCU 重启之后。
 
 > ℹ️ 修好之后 `dmesg` 里**仍然会有两三次 attach**，那是正常的。patch 解决的是「每次 attach 之后引脚方向都重新配上」，不是消除 attach。
 

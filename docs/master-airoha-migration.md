@@ -388,7 +388,7 @@ Release 会标成 **pre-release**，这是故意的（`master-airoha` 不在
 
 #### 关于救砖页那份「下载最新 ubi-auto 固件」列表
 
-[recovery-guide.html](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html)
+[recovery-guide.html](https://loong1996.github.io/ImmortalWrt-Airoha/recovery-guide.html)
 拉的是 `/releases?per_page=100`（**列全部 release，含 pre-release**），不是
 `/releases/latest`，所以过滤完全靠页面里的 JS（`guide/recovery-guide.html:867`）：
 

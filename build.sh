@@ -7,7 +7,7 @@
 #
 #   ./build.sh                                  # master 线 + ubi 变体
 #   ./build.sh -v stock                         # 换设备变体
-#   ./build.sh -b openwrt-25.12-XG-040G-MD      # 换源码分支
+#   ./build.sh -D xg-040g-mf                    # 换机型
 #   ./build.sh -p "luci-app-passwall -luci-app-ttyd"   # 选包页生成的那串
 #
 set -euo pipefail
@@ -23,7 +23,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_URL="https://github.com/Loong1996/immortalwrt.git"
 
 # 默认值与 workflow 的 workflow_dispatch 默认输入保持一致
-BRANCH="master-XG-040G-MD"
+BRANCH="master-airoha"
 VARIANT="ubi"
 DEVICE="xg-040g-md"
 DRAM_SIZE="auto"
@@ -68,14 +68,9 @@ usage() {
     cat <<'EOF'
 用法: ./build.sh [选项]
 
-  -b, --branch <分支>     源码分支，默认 master-XG-040G-MD
-                          可选 master-airoha、openwrt-25.12-XG-040G-MD 等
-                          master-airoha 是整理过的 master 线，无 tcboot 变体
-  -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 ubi
-                          （25.12 线只有一个设备，此项被忽略；
-                            master-airoha 无 tcboot）
+  -b, --branch <分支>     源码分支，默认 master-airoha（唯一维护的线）
+  -v, --variant <变体>    设备变体 ubi|stock，默认 ubi
   -D, --device <机型>     xg-040g-md|xg-040g-mf，默认 xg-040g-md
-                          （仅 master-airoha 支持 MF；其余分支忽略此项）
   -d, --dram <容量>       内存容量 auto|512M|1G|2G，默认 auto（自适应）
   -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除
   -j, --jobs <n>          并行度，默认按 CPU 与内存自动取较小值
@@ -90,8 +85,7 @@ usage() {
 
 示例:
   ./build.sh -v ubi -j 4
-  ./build.sh -b master-airoha -D xg-040g-mf
-  ./build.sh -b openwrt-25.12-XG-040G-MD
+  ./build.sh -D xg-040g-mf
   ./build.sh -p "luci-app-openclash ruby ruby-yaml"
 EOF
 }
@@ -166,42 +160,17 @@ fi
 
 # ---------------------------------------------------------- 分支与变体映射
 
-# 与 workflow「生成变量」一步的 case 完全一致，含 master 线的前缀匹配
-case "$BRANCH" in
-    master-airoha)
-        # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock；
-        # 唯一支持第二款机型的分支，MF 走 an7583 子目标
-        case "$DEVICE" in
-            xg-040g-md) DEVICE_SUBTARGET="an7581"; CONFIG_FILE="config/xg-040g-md-master.config" ;;
-            xg-040g-mf) DEVICE_SUBTARGET="an7583"; CONFIG_FILE="config/xg-040g-mf-master.config" ;;
-            *)          die "不支持的机型: $DEVICE（可选 xg-040g-md|xg-040g-mf）" ;;
-        esac
-        case "$VARIANT" in
-            stock)  DEVICE_SYMBOL="nokia_${DEVICE}" ;;
-            ubi)    DEVICE_SYMBOL="nokia_${DEVICE}-ubi" ;;
-            tcboot) die "master-airoha 已移除 tcboot 变体，请用 ubi 或 stock" ;;
-            *)      die "不支持的变体: $VARIANT（可选 stock|ubi）" ;;
-        esac
-        ;;
-    master-XG-040G-MD*|xpon-test)
-        [ "$DEVICE" = "xg-040g-md" ] || warn "分支 $BRANCH 只有 XG-040G-MD，已忽略 --device $DEVICE"
-        DEVICE="xg-040g-md"; DEVICE_SUBTARGET="an7581"
-        CONFIG_FILE="config/xg-040g-md-master.config"
-        case "$VARIANT" in
-            tcboot) DEVICE_SYMBOL="nokia_xg-040g-md-tcboot" ;;
-            stock)  DEVICE_SYMBOL="nokia_xg-040g-md" ;;
-            ubi)    DEVICE_SYMBOL="nokia_xg-040g-md-ubi" ;;
-            *)      die "不支持的变体: $VARIANT（可选 tcboot|stock|ubi）" ;;
-        esac
-        ;;
-    *)
-        [ "$DEVICE" = "xg-040g-md" ] || warn "分支 $BRANCH 只有 XG-040G-MD，已忽略 --device $DEVICE"
-        DEVICE="xg-040g-md"; DEVICE_SUBTARGET="an7581"
-        CONFIG_FILE="config/xg-040g-md.config"
-        DEVICE_SYMBOL="bell_xg-040g-md"
-        [ "$VARIANT" = "tcboot" ] || warn "25.12 线只有 bell_xg-040g-md 一个设备，已忽略 --variant $VARIANT"
-        VARIANT="tcboot"
-        ;;
+# 与 workflow「生成变量」一步一致：机型决定子目标与配置文件，变体决定设备符号
+[ "$BRANCH" = "master-airoha" ] || warn "只维护 master-airoha，分支 $BRANCH 按同样的机型/变体规则处理"
+case "$DEVICE" in
+    xg-040g-md) DEVICE_SUBTARGET="an7581"; CONFIG_FILE="config/xg-040g-md-master.config" ;;
+    xg-040g-mf) DEVICE_SUBTARGET="an7583"; CONFIG_FILE="config/xg-040g-mf-master.config" ;;
+    *)          die "不支持的机型: $DEVICE（可选 xg-040g-md|xg-040g-mf）" ;;
+esac
+case "$VARIANT" in
+    stock)  DEVICE_SYMBOL="nokia_${DEVICE}" ;;
+    ubi)    DEVICE_SYMBOL="nokia_${DEVICE}-ubi" ;;
+    *)      die "不支持的变体: $VARIANT（可选 stock|ubi）" ;;
 esac
 
 case "$DRAM_SIZE" in
@@ -300,25 +269,6 @@ if [ -f staging_dir/host/lib/pkgconfig/zlib.pc ]; then
         die "staging_dir/host 的 zlib.pc prefix 是 $ZPREFIX，不是本树 $EXPECT_PREFIX。多半是从另一棵树拷了工具链。在本树执行：make tools/zlib/{clean,compile,install} && make package/system/apk/host/clean"
     fi
 fi
-
-# U-Boot 2026.07 的 fmsh 表只有 FM25S01A。内核已认 FM25G01B/G02B，ubi 引导
-# 还要 U-Boot 自己认。补丁来自 dalutou（Linux d5a5c9eb / 8211f2d7 移植到
-# uboot-airoha）；SkyHigh 走另一张表，这两份不会动到它。
-#
-# master-airoha 刻意不在此列：这两个补丁已收编进该分支的源码树
-# （package/boot/uboot-airoha/patches/120、121），再拷一次是多余的。
-# patch/uboot-airoha/ 只为下面这几个老分支保留。
-case "$BRANCH" in
-    master-XG-040G-MD*|xpon-test)
-        UBOOT_PATCHES="$SRC_DIR/package/boot/uboot-airoha/patches"
-        if [ -d "$UBOOT_PATCHES" ]; then
-            info "写入 U-Boot FM25G01B/FM25G02B 闪存补丁"
-            cp -f "$REPO_ROOT"/patch/uboot-airoha/*.patch "$UBOOT_PATCHES/"
-        else
-            warn "未找到 $UBOOT_PATCHES，跳过 U-Boot 闪存补丁"
-        fi
-        ;;
-esac
 
 # ------------------------------------------------------------ 内存容量改写
 
@@ -502,8 +452,6 @@ echo "固件目录: $OUT"
 ls -lh "$OUT"/*.bin "$OUT"/*.itb "$OUT"/*.fip 2>/dev/null || ls -lh "$OUT"
 echo
 case "$DEVICE_SYMBOL" in
-    nokia_xg-040g-md-tcboot|bell_xg-040g-md)
-        echo "刷机用: *-sysupgrade.bin" ;;
     nokia_xg-040g-md)
         echo "刷机用: factory-kernel.bin + factory-rootfs.bin" ;;
     nokia_xg-040g-md-ubi|nokia_xg-040g-mf-ubi)

@@ -6,7 +6,7 @@ name: 更新门户网页
 # 勾上才克隆源码 + feeds + defconfig 生成索引，约十分钟。
 # tmp/.packageinfo 是 include/scan.mk 在 make defconfig 阶段扫描全部
 # feeds 产生的，那时候一行代码都还没编。
-run-name: "更新门户网页${{ inputs.update_index && format(' · 索引 · {0}', inputs.repo_branch) || '' }}"
+run-name: "更新门户网页${{ inputs.update_index && ' · 刷新索引' || '' }}"
 
 on:
   workflow_dispatch:
@@ -16,27 +16,26 @@ on:
         required: true
         default: false
         type: boolean
-      repo_branch:
-        description: '给哪条线生成索引（仅刷新索引时有效）'
+      device:
+        description: '按哪款机型生成索引（仅刷新索引时有效；两款的软件包集合相同，只影响「依赖带入」那一档）'
         required: true
-        default: '两条线都生成'
+        default: 'xg-040g-md'
         type: choice
         options:
-          - 两条线都生成
-          - openwrt-25.12-XG-040G-MD
-          - master-XG-040G-MD
+          - xg-040g-md
+          - xg-040g-mf
       device_variant:
-        description: '设备变体（仅刷新索引且 master 线有效；ubi 推荐，tcboot 刷机不再维护）'
+        description: '设备变体（仅刷新索引时有效；ubi 推荐）'
         required: true
         default: 'ubi'
         type: choice
         options:
           - ubi
           - stock
-          - tcboot
 
 env:
   REPO_URL: https://github.com/Loong1996/immortalwrt.git
+  REPO_BRANCH: master-airoha
   TZ: Asia/Shanghai
 
 jobs:
@@ -65,15 +64,6 @@ jobs:
     permissions:
       contents: write
 
-    strategy:
-      # 两条线互不相干，一条挂了另一条照样出索引
-      fail-fast: false
-      # 并发推 gh-pages 会撞车，交给发布步骤里的重试逻辑处理
-      matrix:
-        branch: ${{ fromJSON(inputs.repo_branch == '两条线都生成'
-          && '["openwrt-25.12-XG-040G-MD","master-XG-040G-MD"]'
-          || format('["{0}"]', inputs.repo_branch)) }}
-
     steps:
     - name: Checkout
       uses: actions/checkout@main
@@ -87,29 +77,24 @@ jobs:
     - name: Clone Source Code(克隆源代码)
       run: |
         # 只要元数据，不需要历史
-        git clone --depth 1 "$REPO_URL" -b "${{ matrix.branch }}" openwrt
+        git clone --depth 1 "$REPO_URL" -b "$REPO_BRANCH" openwrt
         cd openwrt
         echo "OPENWRT_PATH=$PWD" >> $GITHUB_ENV
         echo "SRC_INFO=$(git show -s --format='%h %s')" >> $GITHUB_ENV
 
     - name: Generate Variables(生成变量)
       run: |
-        # 与构建流程保持一致：只有 master 线是显式匹配，其余落进 25.12 的默认
-        case "${{ matrix.branch }}" in
-          master-XG-040G-MD)
-            CONFIG_FILE=config/xg-040g-md-master.config
-            case "${{ inputs.device_variant }}" in
-              tcboot) DEVICE_SYMBOL=nokia_xg-040g-md-tcboot ;;
-              stock)  DEVICE_SYMBOL=nokia_xg-040g-md ;;
-              ubi)    DEVICE_SYMBOL=nokia_xg-040g-md-ubi ;;
-              *)      echo "::error::不支持的 device_variant"; exit 1 ;;
-            esac
-            ;;
-          *)
-            CONFIG_FILE=config/xg-040g-md.config
-            DEVICE_SYMBOL=bell_xg-040g-md
-            ;;
+        # 与构建流程保持一致：机型决定子目标与配置文件，变体决定设备符号
+        case "${{ inputs.device }}" in
+          xg-040g-mf) DEVICE_SUBTARGET=an7583; CONFIG_FILE=config/xg-040g-mf-master.config ;;
+          *)          DEVICE_SUBTARGET=an7581; CONFIG_FILE=config/xg-040g-md-master.config ;;
         esac
+        case "${{ inputs.device_variant }}" in
+          stock)  DEVICE_SYMBOL=nokia_${{ inputs.device }} ;;
+          ubi)    DEVICE_SYMBOL=nokia_${{ inputs.device }}-ubi ;;
+          *)      echo "::error::不支持的 device_variant"; exit 1 ;;
+        esac
+        echo "DEVICE_SUBTARGET=$DEVICE_SUBTARGET" >> $GITHUB_ENV
         echo "CONFIG_FILE=$CONFIG_FILE" >> $GITHUB_ENV
         echo "DEVICE_SYMBOL=$DEVICE_SYMBOL" >> $GITHUB_ENV
         echo "INDEX_TAG=索引 $(date +%Y-%m-%d) #${{ github.run_number }}" >> $GITHUB_ENV
@@ -127,12 +112,12 @@ jobs:
         cd $OPENWRT_PATH
         # 设备符号影响 defconfig 补全出来的包集合，也就是索引里"依赖带入"
         # 那一档。不设对设备，那一档就是错的。
-        sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-        sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-        sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+        sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+        sed -i "/^# CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+        sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}=y/a CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config
         # 这一步只读元数据、不编译，是整个流程里最慢的一环（几分钟）
         make defconfig
-        grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
+        grep -q "^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config \
           || { echo "::error::defconfig 后设备符号丢失: $DEVICE_SYMBOL"; exit 1; }
         [ -s tmp/.packageinfo ] || { echo "::error::未生成 tmp/.packageinfo"; exit 1; }
         echo "元数据条目数: $(grep -c '^Package: ' tmp/.packageinfo)"
@@ -145,8 +130,8 @@ jobs:
           "$OPENWRT_PATH/tmp/.packageinfo" \
           "$OPENWRT_PATH/.config" \
           "$GITHUB_WORKSPACE/$CONFIG_FILE" \
-          "${{ matrix.branch }}" "$INDEX_TAG ($SRC_INFO)" \
-          "$PAGES/packages-${{ matrix.branch }}.json"
+          "$REPO_BRANCH" "$INDEX_TAG ($SRC_INFO)" \
+          "$PAGES/packages-$REPO_BRANCH.json"
 
     - name: Publish To Pages(发布到选包页)
       env:
@@ -154,4 +139,4 @@ jobs:
       run: |
         bash "$GITHUB_WORKSPACE/scripts/publish-pages.sh" \
           "$RUNNER_TEMP/pages" \
-          "选包页：更新 ${{ matrix.branch }} 索引（$INDEX_TAG）"
+          "选包页：更新 $REPO_BRANCH 索引（$INDEX_TAG）"
