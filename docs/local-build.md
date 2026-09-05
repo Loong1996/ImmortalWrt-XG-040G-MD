@@ -67,6 +67,7 @@
 > cd ImmortalWrt-XG-040G-MD
 > ./build.sh                          # master 线 + ubi 变体（推荐）
 > ./build.sh -v stock -j 4            # 换变体、限制并行度
+> ./build.sh -b master-airoha -D xg-040g-mf   # MF 机型，只有 master-airoha 有
 > ./build.sh -p "luci-app-passwall"   # 附加软件包，格式同选包页
 > ./build.sh -h                       # 全部参数
 > ```
@@ -77,6 +78,7 @@
 > | --- | --- | --- |
 > | `-b, --branch` | 编译分支 | `master-XG-040G-MD` |
 > | `-v, --variant` | 设备变体 | `ubi` |
+> | `-D, --device` | 机型 `xg-040g-md` / `xg-040g-mf` | `xg-040g-md`（仅 `master-airoha` 认 MF，其余分支忽略） |
 > | `-d, --dram` | 内存容量 | `auto` |
 > | `-p, --packages` | 附加软件包 | 空 |
 > | `-j, --jobs` | （CI 用 `nproc`） | CPU 与内存推算的较小值 |
@@ -143,22 +145,26 @@ python3 ../ImmortalWrt-XG-040G-MD/scripts/inject-author-info.py
 | `master-XG-040G-MD` | 同上 | `stock` | `nokia_xg-040g-md` |
 | `master-XG-040G-MD` | 同上 | `tcboot`（刷机不再维护） | `nokia_xg-040g-md-tcboot` |
 | `master-airoha` | `config/xg-040g-md-master.config` | `ubi`（默认） / `stock`，**无 tcboot** | `nokia_xg-040g-md-ubi` / `nokia_xg-040g-md` |
+| `master-airoha` + `-D xg-040g-mf` | `config/xg-040g-mf-master.config` | 同上 | `nokia_xg-040g-mf-ubi` / `nokia_xg-040g-mf`，子目标 **`an7583`** |
 | `openwrt-25.12-XG-040G-MD` | `config/xg-040g-md.config` | 不适用 | `bell_xg-040g-md` |
 
 ```bash
 DEVICE_SYMBOL=nokia_xg-040g-md-ubi
+SUBTARGET=an7581                     # MF 是 an7583，配置文件换 xg-040g-mf-master.config
 cp ../ImmortalWrt-XG-040G-MD/config/xg-040g-md-master.config .config
 
-# 先清掉配置里所有 an7581 设备行，再插入选中的那个
-sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+# 先清掉配置里这个子目标的所有设备行，再插入选中的那个
+sed -i "/^CONFIG_TARGET_airoha_${SUBTARGET}_DEVICE_/d" .config
+sed -i "/^# CONFIG_TARGET_airoha_${SUBTARGET}_DEVICE_/d" .config
+sed -i "/^CONFIG_TARGET_airoha_${SUBTARGET}=y/a CONFIG_TARGET_airoha_${SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config
 
 make defconfig
 
 # 必须有输出，否则该分支里根本没有这个设备
-grep "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
+grep "^CONFIG_TARGET_airoha_${SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config
 ```
+
+子目标必须和机型对上：把 MF 的符号插在 `an7581` 那一行后面，`defconfig` 同样静默丢掉，编出来的是没选中任何设备的空壳。
 
 最后那行 `grep` 不是走形式。`make defconfig` 遇到当前源码树里不存在的符号会**静默删掉**对应行，不报任何错；漏掉这次核对，就要等一两小时编完、发现产物文件名不对才知道选错了变体。workflow 里同样在 `defconfig` 前后各查一次。
 
@@ -219,7 +225,7 @@ make -j1 V=s
 ## 四、产物
 
 ```bash
-ls bin/targets/airoha/an7581/
+ls bin/targets/airoha/an7581/        # MD；MF 在 an7583/
 ```
 
 关注哪几个文件取决于变体：
@@ -231,6 +237,40 @@ ls bin/targets/airoha/an7581/
 | `ubi` | `preloader.bin` + `bl31-uboot.fip`（USB-TTL 刷入）、`*-recovery.itb` 救援镜像 |
 
 `bin/packages/` 下是本次编出的全部 `.apk`，刷完机后补装软件包用得上 —— workflow 会把它打包成 `Packages.tar.gz` 传进 Release，本地直接从这个目录取即可。
+
+### 从编译机拉回本机
+
+编译机往往在家里、人在外面 ssh 回去。产物不用先挪到别处，在**本机**上反向拉就行。ssh 端口不一定是 22，rsync 要把它塞进 `-e`，scp 用大写 `-P`：
+
+```bash
+# 本机执行；HOST / PORT 换成你 ssh 回去用的那套
+mkdir -p ~/Downloads/xg040g && cd ~/Downloads/xg040g
+
+# 整个产物目录，断线可续传（-P）；MF 把 an7581 换成 an7583
+rsync -avP -e 'ssh -p PORT' 'user@HOST:~/build/openwrt-master-airoha/bin/targets/airoha/an7581/' an7581/
+
+# 只要某几个文件：通配符放在引号里，让远端展开
+rsync -avP -e 'ssh -p PORT' 'user@HOST:~/build/openwrt-master-airoha/bin/targets/airoha/an7581/*xg-040g-md-ubi-*' .
+
+# 没有 rsync 就 scp，断了得重来
+scp -P PORT 'user@HOST:~/build/openwrt-master-airoha/bin/targets/airoha/an7581/*xg-040g-md-ubi-*' .
+```
+
+目录里的 `sha256sums` 一起拉下来，`sha256sum -c --ignore-missing sha256sums` 能确认外网传输没出错（macOS 用 `shasum -a 256 -c`）。
+
+`~/.ssh/config` 里给编译机写好 `Host` / `Port` 之后，上面的 `-e` / `-P` 都可以省掉。
+
+### MD 与 MF 共用一个源码树
+
+两款机器同属 `airoha`、同一 CPU 架构（`aarch64_cortex-a53`），只是子目标不同，所以 `build.sh -D xg-040g-mf` 用的是同一个 `openwrt-master-airoha`，编完 MD 再编 MF 复用得很多：
+
+| | MD 编完后再编 MF |
+| --- | --- |
+| 工具链、用户态软件包 | 复用——按架构分目录，两个子目标共用 |
+| 内核、kmod | 重编——按子目标分目录 |
+| `uboot-airoha`、镜像打包 | 重做 |
+
+大约二三十分钟。交替编两边也不互相踢缓存，各自的内核目录都留着，只有 `.config` 在切换。
 
 ## 五、增量重编
 
@@ -281,7 +321,17 @@ fatal: Not possible to fast-forward, aborting.
 
 判断「本地有没有自己的提交」用的是 `git cherry` 的 patch-id 比对，而不是 SHA。因为 rebase 之后本地旧提交的 SHA 在远端已不存在，按 SHA 算会把它误判成你的改动 —— 那样每次跟进上游都会卡住，而这恰恰是最常见的场景。
 
-强推重置之后基线变了，内核补丁或 DTS 若有改动，这次编译建议加 `--clean`。
+强推重置之后基线变了，内核补丁或 DTS 若有改动，这次编译建议加 `--clean`。只改了某个包（比如 `uboot-airoha` 的补丁）则不用：包目录内容的 md5 进了 `.prepared` 戳，那个包会自动重新解包、打补丁、编译，其余全部沿用缓存。
+
+**远端把几个提交合并成一个之后**（0.2.0 那次就是把 5 个提交并进了一个），`git cherry` 认不出被合并过的内容，会把它们列成「本地有远端没有的提交」而停下。确认那些就是被并掉的提交后，手工对齐一次：
+
+```bash
+cd ~/build/openwrt-master-airoha
+git branch backup-$(date +%Y%m%d) HEAD          # 保险，随时可删
+git fetch origin master-airoha && git reset --hard origin/master-airoha
+```
+
+脚本每次编译都会往 `banner` / `openwrt_release` / `os-release` 三个模板里写作者信息，更新前会先把它们还原，不会被自己的产物拦住；「工作区有未提交的修改」里列出的只会是你自己的改动。
 
 ## 六、与 CI 的差异
 
