@@ -1,10 +1,10 @@
 # U-Boot 网页救砖
 
-`ubi` 变体的 U-Boot 里内置了一个恢复页面。**机器刷坏了，插上网线用浏览器就能救回来** —— 不用串口，不用在电脑上架 TFTP 服务器，不用装任何工具。
+`ubi` 变体的 U-Boot 里内置了一个恢复页面 —— **Airoha Web U-Boot**。**机器刷坏了，插上网线用浏览器就能救回来** —— 不用串口，不用在电脑上架 TFTP 服务器，不用装任何工具。
 
-已合入 `master-XG-040G-MD` 主线，开发过程的完整提交历史归档在 `archive/master-XG-040G-MD-httpd`。
+当前版本 **0.2.0**，在 `master-airoha` 线上维护，XG-040G-MD 与 XG-040G-MF 共用同一份页面。0.1.x 的开发历史归档在 `archive/master-XG-040G-MD-httpd`。
 
-> 想要图文版、从零开始的操作教程（含实拍接线图与串口截图），见 **[网页救砖指南](https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html)**。本文档是技术参考，覆盖设计取舍与踩过的坑。
+> 想要图文版、从零开始的操作教程（含实拍接线图与串口截图），见 **[网页救砖指南](https://loong1996.github.io/ImmortalWrt-Airoha/recovery-guide.html)**。本文档是技术参考，覆盖设计取舍与踩过的坑。
 
 > 只对 `ubi` 变体有效。`tcboot` 变体用的是第三方引导程序，`stock` 用原厂引导，都不经过这个 U-Boot。
 
@@ -20,7 +20,7 @@
 | --- | --- |
 | 想主动刷机 | **按住 reset 上电**，一直按着，等面板五个绿灯开始**流水**再松手（约 15 秒） |
 | 机器起不来了 | **什么都不用做** —— 从 NAND 引导失败后会自己循环起网页，插上网线即可 |
-| 手上接着串口（0.1.1） | 引导菜单上用 ↑/↓ **选到第 9 项** 回车 —— `bootmenu_8` 直接 `httpd`，不经 `_firstboot`，不用掐 reset 的时机 |
+| 手上接着串口 | 引导菜单上用 ↑/↓ **选到第 9 项** 回车 —— `bootmenu_8` 直接 `httpd`，不经 `_firstboot`，不用掐 reset 的时机 |
 
 这段时间里有一部分是 bootmenu 的等待。`button reset` 读的是那一瞬间的电平，不是累计计时，所以「一直按住」比「按几下」可靠。**流水灯亮起来就是进去了。**
 
@@ -31,10 +31,27 @@
 1. 网线插到串口打印的那个口（`Using xxx device` 那行；没有串口就一个个试，通常是 LAN1）
 2. 电脑或手机的网口设成自动获取 IP，会拿到 `192.168.1.100`
 3. 浏览器打开 **`192.168.1.1`**
-4. 「固件」那一格选 `...-ubi-squashfs-sysupgrade.itb`，点「上传并刷写」
-5. 确认对话框里核对一遍，点「开始写入」
+4. 左栏「日常刷机」里选 `...-ubi-squashfs-sysupgrade.itb`，点「上传并刷写」
+5. 确认框里核对文件名与大小，点「仍要写入」
 
 **不用先配静态 IP** —— U-Boot 里带了个最小 DHCP 服务器，专门为了省掉这一步，那正是救砖流程最容易卡住的地方。
+
+### 页面里有什么
+
+左栏一项一个任务，每页只提交自己那几个字段，所以不存在「这两样不能一起传」的报错：
+
+| 页 | 字段 | C 侧做什么 |
+| --- | --- | --- |
+| 日常刷机 | `firmware` | `ubi_write_production`：删 `fit` 与 `rootfs_data`，按文件长度重建 `fit` 写入 |
+| 引导升级 | `bl2` `fip` `firmware`（可选） `format` | BL2 走 `mtd`；FIP 在位写 `fip` 卷；勾了「重建 UBI」先整个擦掉 `ubi` 分区 |
+| 刷回原厂 | `stock` `stockoff` | 裸设备 `mtd erase` + `mtd write`，偏移由 `stockoff` 给，默认 `0x0` 整片 |
+| 创建 UBI 卷 | `fvol_<name>`… `ubivol` `ubifile` `stay` | 出厂数据卷按 `HTTPD_FACTORY_VOLS` 校验长度后 `ubi write`；任意卷 `ubi check \|\| ubi create` 再写；`stay` 写完不重启 |
+| 设备详情 | — | `GET /info` 返回 JSON：设备树 `model` / `compatible`、DRAM、MTD 几何与分区、MAC、U-Boot 版本、UBI 卷表 |
+| 关于 | — | 静态 |
+
+页面本身**不含任何机型串** —— 机型、闪存、卷表都是请求时读出来的，所以两款机器共用同一份 HTML，第三块板也是。
+
+上传结束设备回一行 `{"ok":1}`，页面自己切到「上传完成」；勾了「写入后不重启」就留在原页、把表单清空。能在上传前查出来的错误 —— 出厂卷长度不对、偏移没按擦除块对齐或超出容量、卷名非法 —— 设备直接回 400，原因显示在进度条下面，此时什么都还没写。
 
 ### 面板灯是唯一的进度来源
 
@@ -47,6 +64,8 @@
 **上传结束后网页就没用了。** `net_loop()` 在写入开始前就返回，连接已经关闭，浏览器和设备之间没有通道 —— 页面上那句「写入期间页面收不到任何消息」说的就是这件事。
 
 拔网线随时安全，写 flash 不经过网络。**要命的是断电** —— 齐闪期间断电才是真的砖。
+
+「写入后不重启」的场合灯会从齐闪回到流水 —— 那就是写完了，可以刷新页面传下一个。写卷期间设备不响应网络，这时再传只会报连接中断。
 
 ### 传了固件就等于恢复出厂，只换引导器不是
 
@@ -92,14 +111,14 @@ immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-bl31-uboot.fip     ← BL2 收，
 
 **③ 网页一次传完三样**
 
-展开「引导程序（仅首次迁移需要）」：
+左栏切到「引导升级」：
 
 | 格子 | 文件 |
 | --- | --- |
-| 固件 | `...-ubi-squashfs-sysupgrade.itb` |
 | BL2 | `...-ubi-preloader.bin` |
 | U-Boot | `...-ubi-bl31-uboot.fip` |
-| ☑ 重建 UBI | **必须勾** —— 旧布局上没有有效的 UBI，不擦就建不了卷 |
+| 固件 | `...-ubi-squashfs-sysupgrade.itb` |
+| 重建 UBI（开关） | **必须打开** —— 旧布局上没有有效的 UBI，不擦就建不了卷 |
 
 **④ 自动重启，完成**
 
@@ -109,7 +128,7 @@ immortalwrt-airoha-an7581-nokia_xg-040g-md-ubi-bl31-uboot.fip     ← BL2 收，
 
 ### 日常更新引导器就不用勾了
 
-BL2 走 `mtd`，完全不碰 UBI；FIP 走 `httpd_write_fip`，它自己只换 `fip` 那一个卷，连 `rootfs_data` 都不动（`954`，见下）。**只要 `ubi part ubi` 挂得上，就不要勾重建。**
+BL2 走 `mtd`，完全不碰 UBI；FIP 走 `httpd_write_fip`，它自己只换 `fip` 那一个卷，连 `rootfs_data` 都不动（`954`，见下）。**只要 `ubi part ubi` 挂得上，就不要开重建。**
 
 覆盖正在运行的 U-Boot 是安全的：SPI-NAND 不能 XIP，当前这份早就解压在 DRAM 里跑了，和 flash 上的副本没关系。
 
@@ -121,12 +140,16 @@ BL2 走 `mtd`，完全不碰 UBI；FIP 走 `httpd_write_fip`，它自己只换 `
 
 | 补丁 | 做什么 |
 | --- | --- |
-| `202-net-add-httpd-recovery-server` | 全部的 httpd —— 新增 `net/httpd.c`，外加 `net.c` / `Kconfig` / `Makefile` / `net-legacy.h` 四处挂接 |
-| `950-configs-xg-040g-md-enable-httpd` | defconfig 开 `PROT_TCP` / `CMD_HTTPD` / `CYCLIC` |
-| `951-defenvs-xg-040g-md-httpd-recovery` | 触发路径，与两条 httpd 专用的 env 脚本 |
-| `952-xg-040g-md-bootmenu-web-recovery-branding` | 引导菜单署名、手动开服务的菜单项、`envver` 自动刷新、`ethaddr` 两道闸 |
-| `953-xg-040g-md-httpd-stock-restore` | 救砖页刷回原厂：整片 `all_flash.bin` 或单个原厂分区 |
-| `954-xg-040g-md-httpd-fip-preserve-rootfs-data` | 网页更新引导器不再连带清掉配置 |
+| `202-net-add-httpd-recovery-server` | 全部的 httpd —— 新增 `net/httpd.c`，外加 `net.c` / `Kconfig` / `Makefile` / `net-legacy.h` 四处挂接；`Kconfig` 里三个选项：`CMD_HTTPD`、`HTTPD_FACTORY_VOLS`（出厂数据卷名与长度）、`CMD_HTTPD_STOCK_RESTORE`（按板启用裸写） |
+| `950-configs-xg-040g-md-enable-httpd` | MD defconfig：`PROT_TCP` / `CMD_HTTPD` / `CYCLIC`，`HTTPD_FACTORY_VOLS="ri:0x40000 bosa:0x40000"`，`CMD_HTTPD_STOCK_RESTORE=y` |
+| `951-defenvs-xg-040g-md-httpd-recovery` | MD 触发路径，与两条 httpd 专用的 env 脚本 |
+| `952-xg-040g-md-bootmenu-web-recovery-branding` | MD 引导菜单署名、手动开服务的菜单项、`envver` 自动刷新、`ethaddr` 两道闸 |
+| `954-xg-040g-md-httpd-fip-preserve-rootfs-data` | MD defenv 加 `httpd_write_fip`（网页更新引导器不清配置） |
+| `960` / `961` / `962` | MF 的同一套：defconfig、触发路径、菜单 |
+
+页面本身不在补丁里手改：源文件是 fork 的 `package/boot/uboot-airoha/files/httpd/page.html`，`gen.py` 把它逐行转成 C 字符串塞进 `net/httpd.c` 的 `PAGE_BEGIN` / `PAGE_END` 之间。改页面 → 跑脚本 → 重新生成 `202`。
+
+0.1.x 里 `953`（刷回原厂）和 `954`（`httpd_write_fip`）各自带的 `net/httpd.c` 片段在 0.2.0 都并回了 `202`，理由和下面那段一样：它们改的是同一个我们自己新增的文件。剩下的按板差异全部退到 defconfig 与 defenv 里。
 
 `206`（DRAM 容量探测）编号挨着但**与网页救砖无关**，是独立的 bug 修复，影响所有 an7581 设备 —— 见[设备变体 → 内存容量](variants.md#内存容量)。分开放是为了以后单独提上游时不用再拆。
 
@@ -162,18 +185,18 @@ httpd_format_ubi=ubi detach ; mtd erase ubi && ubi part ubi
 菜单原来看不出这是哪来的固件 —— 和一份原厂 UBI 引导长得一模一样，进到菜单里的人也没有路径找回项目。
 
 ```
-bootmenu_title=  \e[1;39mOpenWrt-Web 0.1.1\e[0m    ← 加了版本号，并去掉原来的三对括号
+bootmenu_title=  \e[1;39mAiroha Web U-Boot 0.2.0\e[0m    ← 加了版本号，并去掉原来的三对括号
 bootmenu_8=\e[31mStart web recovery server (http://192.168.1.1)\e[0m=httpd ; run bootmenu_confirm_return
-bootmenu_9=About - github.com/Loong1996/ImmortalWrt-XG-040G-MD=run show_about ; run bootmenu_confirm_return
+bootmenu_9=About - github.com/Loong1996/ImmortalWrt-Airoha=run show_about ; run bootmenu_confirm_return
 show_about=echo ; echo Web recovery U-Boot by Loong ; echo Guide: ... ; echo Project: ... ; echo Author: ... ; echo
 ```
 
 `httpd_start_server()` 开头也照着打一遍，给看串口、不看网页的人：
 
 ```
-Web recovery 0.1.1 by Loong
-Guide   https://loong1996.github.io/ImmortalWrt-XG-040G-MD/recovery-guide.html
-Project https://github.com/Loong1996/ImmortalWrt-XG-040G-MD
+Airoha Web U-Boot 0.2.0 by Loong
+Project https://github.com/Loong1996/ImmortalWrt-Airoha
+Guide   https://loong1996.github.io/ImmortalWrt-Airoha/recovery-guide.html
 Using airoha-gdm1 device, MAC xx:xx:xx:xx:xx:xx
 Listening for HTTP on 192.168.1.1 port 80
 Handing out DHCP leases from 192.168.1.1
@@ -188,7 +211,7 @@ Press Ctrl-C to abort
 - **第 10 项画出来是「a.」不是「10.」。** 快捷键只有一个字符：1–9 之后接 a–z，0 留给 Exit。所以仓库地址写在标题里而不是藏在按键后面 —— 不按也要能看见，按下去才补上作者页。
 - **标题去掉了原来的 `( ( ( ... ) ) )`。** 标题从第 3 列画起（`bootmenu_print_entry` 用 `ANSI_CURSOR_POSITION`），而 `_bootmenu_update_title` 会把完整的 `$ver`（72 字符）追加在后面。80 列下留给 `$ver` 的只有 36 列，版本号后半截连 commit hash 一起被截掉；去掉那三对括号腾出 12 列，r 号和 hash 就都能看全了（日期仍会截，无所谓）。末尾补了 `\e[0m`，免得 `_bootmenu_update_title` 没跑时后面的输出继承亮白。
 - **第 9 项是红的**，和写引导器的那两项同色：它是刷机入口，且一旦进去，机器就离开菜单直到被中断。
-- **版本号写了两遍**：`bootmenu_title` 里一份（`952`），`net/httpd.c` 的 `WEB_VERSION` 一份（`202`）。env 是纯文本，看不见 C 宏。改版本要同时动这两个补丁 —— 网页上那个 `Web 0.1.1` 徽章用的就是后者。
+- **版本号写了两遍**：`bootmenu_title` 里一份（`952`），`net/httpd.c` 的 `WEB_VERSION` 一份（`202`）。env 是纯文本，看不见 C 宏。改版本要同时动这两个补丁（MF 还有 `962`），并把 `envver` 加一 —— 网页侧栏那个 `0.2.0` 用的就是后者。
 
 > **老机器升级引导器后看不到新菜单 —— `envver` 之后会自动处理。**
 >
@@ -236,22 +259,24 @@ envver  bootmenu_title  bootmenu_1..bootmenu_9  show_about
 >
 > 现在由钩子自己补。两条路不会重复追加：**环境被重建**时跑的是那个 env 脚本，而那种情况下 `envver` 恰好匹配、钩子不触发；**固件升级**时钩子触发，而脚本早已自删除。钩子放在共用的 an7581 board 文件里是安全的：别的板子默认环境里没有 `envver`，`env_get_default_into()` 返回负值就直接 return。`saveenv` 是尽力而为 —— 首次迁移会在 `_init_env` 建出 env 卷之前走到这里，而它本来就跑在默认环境上，不需要这次写入。
 
-### `953`：刷回原厂
+### 刷回原厂与写入偏移（`CMD_HTTPD_STOCK_RESTORE`）
 
 回原厂原本是这个页面唯一去不了的方向 —— 要么用 tcboot 自带的 web 界面（迁走之后它就没了），要么串口加 TFTP 服务器，而后者正是这个页面存在的意义所在。
 
 **为什么一个只有 `bl2` + `ubi` 布局的 U-Boot 能刷回原厂布局：** 分区表不在 flash 上，它来自设备树，跟着引导程序和内核一起走。把原厂字节写回原厂偏移，原厂的分区表也就跟着回来了。`mtd write` 对裸设备按字节偏移写，从不过问分区叫什么。
 
-必须用裸设备 `spi-nand0` 也是同一个原因：`bl2` 到 `0x20000` 结束、`ubi` 从那里开始，**谁都够不到从偏移 0 起的整片写入**。
+必须用裸设备也是同一个原因：`bl2` 到 `0x20000` 结束、`ubi` 从那里开始，**谁都够不到从偏移 0 起的整片写入**。裸设备不再写死 `spi-nand0`，是运行时取「不属于任何分区的那个 MTD」。
 
-两种模式，**它们不是同一个操作的大小号**：
+页面上是一个文件加一个「写入偏移」，默认 `0x0`：
 
-| 模式 | 写到哪 | 用途 |
-| --- | --- | --- |
-| 整片 `all_flash.bin` | 裸设备 `spi-nand0` 物理偏移 `0` | 真正退回原厂 |
-| 单个出厂卷（`ri` / `bosa`） | **UBI 卷**（`ubi write`） | 在 ubi 布局下找回出厂标识 |
+| 偏移 | 效果 |
+| --- | --- |
+| `0x0` + 整片 `all_flash.bin` | 真正退回原厂，本页面随之消失 |
+| 某个原厂分区的起始，如 `0xC0000` + 那个分区的备份 | 只写那一段 |
 
-两者都先校验长度再动手 —— 整片必须正好 `0xeba0000`，卷必须正好 `0x40000`。擦完才发现文件不对，那时机器上已经没有能引导的东西了。
+C 侧只查两件事，都在上传时查、查不过回 400：偏移按擦除块对齐，偏移加长度不超过容量。**不校验镜像内容，也不校验机型** —— MD 与 MF 的 `all_flash.bin` 长度相同、布局相同，页面分辨不出来，刷错机型之后只能靠串口。擦除长度按擦除块向上取整（`mtd erase` 拒绝非整数倍的长度），写入长度就是文件长度。
+
+出厂数据 `ri` / `bosa` 不在这一页，在「创建 UBI 卷」页的「出厂数据」组：
 
 > ### ⚠️ 单个出厂数据只能按 UBI 卷写，不能按原厂偏移裸写
 >
@@ -264,13 +289,13 @@ envver  bootmenu_title  bootmenu_1..bootmenu_9  show_about
 >
 > 两个 `ri` 只是同名：内容一样、长度一样、MAC 同样在 `+0x3e`，**容器不同**。所以恢复它要用 `ubi write $loadaddr ri 0x40000`。
 >
-> 同理，原厂那 13 个 mtd 分区在 ubi 布局下**无一例外落在 ubi 区内，没有一个能安全写**。真实用例只有两个：彻底退回原厂就整片刷（那时 UBI 本来就要没了，写物理偏移是对的），在 ubi 下找回出厂标识就写卷。
+> 同理，原厂那 13 个 mtd 分区在 ubi 布局下**无一例外落在 ubi 区内，没有一个能安全写**。「写入偏移」是给已经退回原厂布局、或者明知自己在干什么的人用的。
 
-> **`kernel_slave` / `rootfs_slave` 故意不提供。** 它们的大小是注册时镜像的长度（`0x3af742` / `0x1cb0000`），不是 128 KiB 擦除块的整数倍，没法单独擦。`nsb_slave` 覆盖这两个，是能用的最小单位。`nsb_master` 不列是另一个原因 —— 它不是分区，是 `kernel`+`rootfs` 的第二个视图，写它等于把那两块写两遍。
+哪些卷算出厂数据、各多长，由 defconfig 里的 `CONFIG_HTTPD_FACTORY_VOLS="ri:0x40000 bosa:0x40000"` 说了算；`net/httpd.c` 里没有卷名。页面从 `/info` 拿到这个列表后才画出那两行，字段名是 `fvol_<卷名>`。长度必须正好相等，差一个字节都拒收 —— 这是 MAC 所在的卷。
 
-**`UPLOAD_MAX` 改成了按 DRAM 实算。** 上传落在 `$loadaddr` 就地刷写，所以能放多大取决于它上面还剩多少内存：512M 的机器放下 235.6 MiB 后余量约 20 MiB。原来固定的 96 MiB 会直接拒收原厂镜像，而单纯把常数调大又会让更大的文件写出内存边界。
+「任意卷」那一组是 `ubi check <name> || ubi create <name> <文件长度> dynamic` 再 `ubi write`：卷在就在位写，不在就按文件长度建。这里故意不查长度 —— `ubi write` 自己会在动手前拒绝超出预留的写入，它知道真实数字而这里只能猜。
 
-两条路不会同处一次会话 —— 表单拒绝把退回原厂和任何 UBI 侧字段一起提交，`httpd_flash()` 也是各自 `return`，不会落进 `bl2`/`fip`/`fit` 那串流程。
+**`UPLOAD_MAX` 按 DRAM 实算。** 上传落在 `$loadaddr` 就地刷写，所以能放多大取决于它上面还剩多少内存：512M 的机器放下 235.6 MiB 后余量约 20 MiB。固定的 96 MiB 会直接拒收原厂镜像，而单纯把常数调大又会让更大的文件写出内存边界。
 
 ### `ri` 卷空了会读出一个广播 MAC
 
@@ -385,20 +410,13 @@ tcboot 里嵌了 uIP 0.9（响应头 `Server: uIP/0.9`），因为它的基础 U
 
 `CONFIG_CYCLIC_MAX_CPU_TIME_US` 默认 5000 μs，写 5 个 GPIO 够不着。万一超了会打印 `cyclic function httpd-flash took too long` 并注销回调 —— **灯停在某个状态，但刷写完全不受影响，别当成死机去断电。**
 
-### 二次确认只拦不可逆的两种
+### 确认框每次都弹，但只拦真错的
 
-不做笼统的「确定要刷吗」。走到那个按钮已经过了按住 reset 上电、插网线、开浏览器、选文件四道门，不存在误点；救砖时多一次点击只是多一个出错环节，而每次都弹的确认框两次之后就变成条件反射。
+按钮按下去先弹一个框：列出这次要传的文件名与大小，下面是这一页对应的提示 —— 会清 `rootfs_data`、会擦出厂 MAC、写完不重启要手动断电、整片写入之后本页面就没了。红色「仍要写入」才真的发。
 
-拦的是**重来一次也救不回**的两种：
+拦死（按钮不出现）的只有页面自己能判定的硬错误：没选文件、卷名非法或缺一半、偏移不是十六进制、没按擦除块对齐、超出容量。**文件名与常规命名不符只提醒不拦** —— 文件名是可以被改的，而 `.itb` 进了 BL2 格的后果（写到 flash `0x800`，BootROM 认不出，只能串口 xmodem）确实值得一句提醒。
 
-| 情况 | 后果 |
-| --- | --- |
-| 文件名对不上 | `.itb` 进了 BL2 格 → 写到 flash `0x800`，BootROM 认不出 → **只能串口 xmodem** |
-| 勾了重建 UBI | 出厂 MAC、U-Boot 环境、全部设置一起没 |
-
-刷错固件不在此列 —— 那种情况机器还能再进这个页面重来。
-
-文件名检查按扩展名（`.itb` / `preloader*.bin` / `.fip`），**只提醒不拦死**，文件名是可以被改的。
+一页一个任务本身就消灭了原来一半的报错：「退回原厂不能和刷固件同时」「写入指定卷不能和其它写入同时」这类互斥不再需要说，因为表单结构上就做不到。
 
 ---
 
@@ -459,13 +477,11 @@ httpd: refusing 0 byte upload
 
 ## 验证方式
 
-每次改动都跑三层，因为真机编译一次约 1.5 小时：
+每次改动都跑三层，真机编译一次约 1.5 小时，所以前两层要在本地过：
 
-1. **语法** —— 用一套桩头文件 `gcc -fsyntax-only -Wall -Wextra`
-2. **行为** —— 17 个用例，覆盖 multipart 解析（含 1 字节碎片、2 MB、payload 里混入 boundary 前缀）、多文件上传、刷写序列与对齐、内置兜底、DHCP、失败重试、自动重启
-3. **补丁** —— `patch -p1 --dry-run` 打到真实的 U-Boot 源码上，再比对应用结果与被测源码**逐字节一致**
-
-页面另外还有：HTML 标签配对检查、`node --check` 校验每一段内联 JS、以及把真实的 `up()` 函数拿到 node 里跑确认对话框的各种状态。
+1. **页面** —— `page.html` 在 jsdom 里跑 20 个用例：`/info` 填表与失败降级、每一页的确认框内容与拦截条件、实际提交的 `FormData` 字段集、多文件上传进度按累计长度定位、200 / 400 / 断网三种结局、「不重启」留页并清空表单、无 `STOCK_RESTORE` 编译时没有那一页。用例在 scratchpad，跑的是真实的页面源文件
+2. **编译** —— 整个补丁序列打到纯净的 U-Boot 2026.07 上，在 Docker 里（本机已有的 `ghcr.io/openwrt/buildbot/buildworker` 镜像加 `gcc-aarch64-linux-gnu`）对 MD、MF 两个 defconfig 各编一遍 `net/httpd.o` 与完整 `u-boot.bin`。0.1.x 只做语法级检查，漏过一次把 `flash_part()` 圈进 `#if` 的编译错误，这一层就是为它加的
+3. **补丁** —— 53 个补丁 `patch -p1` 顺序应用无 offset / fuzz（`120` / `121` 是 CRLF，macOS 的 patch 要先 `tr -d '\r'`，CI 的 GNU patch 自己处理）
 
 刷之前从 fip 里解出 U-Boot 二进制核对一遍：
 
@@ -497,4 +513,7 @@ strings -a uboot.bin | grep -E '^(check_buttons|boot_ubi|httpd_)'
 ## 还没做的
 
 * **刷写进度做不到。** 不是没做，是结构上不行：`net_loop()` 在写入开始前就返回，连接已关，页面轮询没人应答。要做就得把刷写拆进网络循环里分块跑 —— 那是把一条简单可靠的救砖路径换成一个状态机，对救砖场景不划算。
+* **写入结果回报。** 「写入后不重启」之后页面不知道写没写成。C 侧存一条结果、加 `GET /status`，页面在服务恢复后轮询一次，就能显示「ri 卷写入成功」或错误 —— 顺带可以给一个「立即重启」按钮。
+* **写入前魔数校验。** FIT `0xd00dfeed`、FIP `0xaa640001`、BL2 头，C 侧写之前查一眼。文件名检查是软的，这个是硬的。
+* **备份下载。** `GET /dump?vol=ri` 之类。刷回原厂那一页最需要的其实是「先把现在的备份下来」。
 * **推上游。** `206` 是实打实的 bug 修复，值得提给 immortalwrt；httpd 这套是否适合上游还没想好。
