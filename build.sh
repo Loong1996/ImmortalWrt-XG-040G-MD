@@ -25,6 +25,7 @@ REPO_URL="https://github.com/Loong1996/immortalwrt.git"
 # 默认值与 workflow 的 workflow_dispatch 默认输入保持一致
 BRANCH="master-XG-040G-MD"
 VARIANT="ubi"
+DEVICE="xg-040g-md"
 DRAM_SIZE="auto"
 EXTRA_PACKAGES=""
 SRC_DIR=""
@@ -73,6 +74,8 @@ usage() {
   -v, --variant <变体>    设备变体 tcboot|stock|ubi，默认 ubi
                           （25.12 线只有一个设备，此项被忽略；
                             master-airoha 无 tcboot）
+  -D, --device <机型>     xg-040g-md|xg-040g-mf，默认 xg-040g-md
+                          （仅 master-airoha 支持 MF；其余分支忽略此项）
   -d, --dram <容量>       内存容量 auto|512M|1G|2G，默认 auto（自适应）
   -p, --packages <串>     附加软件包，格式同选包页：空格分隔，前缀 - 表示移除
   -j, --jobs <n>          并行度，默认按 CPU 与内存自动取较小值
@@ -87,6 +90,7 @@ usage() {
 
 示例:
   ./build.sh -v ubi -j 4
+  ./build.sh -b master-airoha -D xg-040g-mf
   ./build.sh -b openwrt-25.12-XG-040G-MD
   ./build.sh -p "luci-app-openclash ruby ruby-yaml"
 EOF
@@ -96,6 +100,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         -b|--branch)    BRANCH="${2:?缺少分支名}"; shift 2 ;;
         -v|--variant)   VARIANT="${2:?缺少变体名}"; shift 2 ;;
+        -D|--device)    DEVICE="${2:?缺少机型}"; shift 2 ;;
         -d|--dram)      DRAM_SIZE="${2:?缺少容量}"; shift 2 ;;
         -p|--packages)  EXTRA_PACKAGES="${2:-}"; shift 2 ;;
         -j|--jobs)      JOBS="${2:?缺少并行度}"; shift 2 ;;
@@ -164,16 +169,23 @@ fi
 # 与 workflow「生成变量」一步的 case 完全一致，含 master 线的前缀匹配
 case "$BRANCH" in
     master-airoha)
-        # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock
-        CONFIG_FILE="config/xg-040g-md-master.config"
+        # 整理后的 master 线：tcboot 变体已移除，只剩 ubi 与 stock；
+        # 唯一支持第二款机型的分支，MF 走 an7583 子目标
+        case "$DEVICE" in
+            xg-040g-md) DEVICE_SUBTARGET="an7581"; CONFIG_FILE="config/xg-040g-md-master.config" ;;
+            xg-040g-mf) DEVICE_SUBTARGET="an7583"; CONFIG_FILE="config/xg-040g-mf-master.config" ;;
+            *)          die "不支持的机型: $DEVICE（可选 xg-040g-md|xg-040g-mf）" ;;
+        esac
         case "$VARIANT" in
-            stock)  DEVICE_SYMBOL="nokia_xg-040g-md" ;;
-            ubi)    DEVICE_SYMBOL="nokia_xg-040g-md-ubi" ;;
+            stock)  DEVICE_SYMBOL="nokia_${DEVICE}" ;;
+            ubi)    DEVICE_SYMBOL="nokia_${DEVICE}-ubi" ;;
             tcboot) die "master-airoha 已移除 tcboot 变体，请用 ubi 或 stock" ;;
             *)      die "不支持的变体: $VARIANT（可选 stock|ubi）" ;;
         esac
         ;;
     master-XG-040G-MD*|xpon-test)
+        [ "$DEVICE" = "xg-040g-md" ] || warn "分支 $BRANCH 只有 XG-040G-MD，已忽略 --device $DEVICE"
+        DEVICE="xg-040g-md"; DEVICE_SUBTARGET="an7581"
         CONFIG_FILE="config/xg-040g-md-master.config"
         case "$VARIANT" in
             tcboot) DEVICE_SYMBOL="nokia_xg-040g-md-tcboot" ;;
@@ -183,6 +195,8 @@ case "$BRANCH" in
         esac
         ;;
     *)
+        [ "$DEVICE" = "xg-040g-md" ] || warn "分支 $BRANCH 只有 XG-040G-MD，已忽略 --device $DEVICE"
+        DEVICE="xg-040g-md"; DEVICE_SUBTARGET="an7581"
         CONFIG_FILE="config/xg-040g-md.config"
         DEVICE_SYMBOL="bell_xg-040g-md"
         [ "$VARIANT" = "tcboot" ] || warn "25.12 线只有 bell_xg-040g-md 一个设备，已忽略 --variant $VARIANT"
@@ -198,7 +212,7 @@ esac
 [ -f "$REPO_ROOT/$CONFIG_FILE" ] || die "未找到配置文件 $REPO_ROOT/$CONFIG_FILE"
 [ -n "$SRC_DIR" ] || SRC_DIR="$(dirname "$REPO_ROOT")/openwrt-$BRANCH"
 
-info "分支 $BRANCH ／ 变体 $VARIANT ／ 设备 $DEVICE_SYMBOL"
+info "分支 $BRANCH ／ 机型 $DEVICE ／ 变体 $VARIANT ／ 设备 $DEVICE_SYMBOL"
 info "配置 $CONFIG_FILE ／ 内存 $DRAM_SIZE ／ 并行 -j$JOBS"
 info "源码 $SRC_DIR"
 
@@ -372,12 +386,14 @@ stage_done "准备"
 info "生成配置"
 cp "$REPO_ROOT/$CONFIG_FILE" .config
 
-# 先清掉配置里所有 an7581 设备行，再插入选中的那个
-sed -i "/^CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-sed -i "/^# CONFIG_TARGET_airoha_an7581_DEVICE_/d" .config
-sed -i "/^CONFIG_TARGET_airoha_an7581=y/a CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config
-grep -q "^CONFIG_TARGET_airoha_an7581_DEVICE_${DEVICE_SYMBOL}=y" .config \
-    || die "设备符号写入失败: $DEVICE_SYMBOL"
+# 先清掉配置里这个子目标的所有设备行，再插入选中的那个。子目标跟机型走
+# （MD an7581 / MF an7583），写错子目标的符号会被 defconfig 静默丢弃，
+# 编出来的是没选中任何设备的空壳，所以随后要 grep 确认。
+sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+sed -i "/^# CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_/d" .config
+sed -i "/^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}=y/a CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config
+grep -q "^CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}_DEVICE_${DEVICE_SYMBOL}=y" .config \
+    || die "设备符号写入失败: $DEVICE_SYMBOL（配置里没有 CONFIG_TARGET_airoha_${DEVICE_SUBTARGET}=y？）"
 
 # 附加软件包：pkg 编入固件，-pkg 从基础配置剔除。这里只改写 .config，
 # 依赖交给随后的 defconfig 补全，是否真生效在下一步核对。
@@ -479,7 +495,7 @@ stage_done "编译"
 
 # --------------------------------------------------------------- 产物
 
-OUT="$SRC_DIR/bin/targets/airoha/an7581"
+OUT="$SRC_DIR/bin/targets/airoha/$DEVICE_SUBTARGET"
 info "编译完成"
 echo
 echo "固件目录: $OUT"
@@ -490,8 +506,10 @@ case "$DEVICE_SYMBOL" in
         echo "刷机用: *-sysupgrade.bin" ;;
     nokia_xg-040g-md)
         echo "刷机用: factory-kernel.bin + factory-rootfs.bin" ;;
-    nokia_xg-040g-md-ubi)
+    nokia_xg-040g-md-ubi|nokia_xg-040g-mf-ubi)
         echo "刷机用: preloader.bin + bl31-uboot.fip（USB-TTL 刷入）、*-recovery.itb 救援镜像" ;;
+    nokia_xg-040g-mf)
+        echo "刷机用: factory-kernel.bin + factory-rootfs.bin" ;;
 esac
 echo "软件包: $SRC_DIR/bin/packages/"
 echo "刷机方式详见 docs/variants.md"
